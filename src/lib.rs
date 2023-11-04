@@ -4,7 +4,9 @@
 #![doc = include_str!("../README.md")]
 
 use std::{
+    fmt::Arguments,
     io,
+    io::{IoSlice, IoSliceMut},
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
     os::windows::io::OwnedHandle,
@@ -229,7 +231,31 @@ where
         self.0.read(buf)
     }
 
-    // TODO: delegate specialised methods too
+    fn read_vectored(
+        &mut self,
+        bufs: &mut [IoSliceMut<'_>],
+    ) -> io::Result<usize> {
+        self.0.read_vectored(bufs)
+    }
+
+    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
+        self.0.read_to_end(buf)
+    }
+
+    fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
+        self.0.read_to_string(buf)
+    }
+
+    fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
+        self.0.read_exact(buf)
+    }
+
+    fn by_ref(&mut self) -> &mut Self
+    where
+        Self: Sized,
+    {
+        self
+    }
 }
 
 impl<H> io::Write for FastClose<H>
@@ -240,7 +266,26 @@ where
         self.0.write(buf)
     }
 
+    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+        self.0.write_vectored(bufs)
+    }
+
     fn flush(&mut self) -> io::Result<()> {
         self.0.flush()
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        self.0.write_all(buf)
+    }
+
+    fn write_fmt(&mut self, fmt: Arguments<'_>) -> io::Result<()> {
+        self.0.write_fmt(fmt)
+    }
+
+    fn by_ref(&mut self) -> &mut Self
+    where
+        Self: Sized,
+    {
+        self
     }
 }
