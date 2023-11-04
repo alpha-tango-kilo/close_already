@@ -19,7 +19,7 @@ use std::{
     sync::OnceLock,
 };
 
-use threadpool::ThreadPool;
+use threadpool::{Builder as ThreadPoolBuilder, ThreadPool};
 
 static CLOSER_POOL: OnceLock<ThreadPool> = OnceLock::new();
 
@@ -48,7 +48,7 @@ where
     /// Submits the file handle to a thread pool to handle its closure
     fn drop(&mut self) {
         let closer_pool =
-            CLOSER_POOL.get_or_init(|| ThreadPool::new(num_cpus::get()));
+            CLOSER_POOL.get_or_init(|| ThreadPoolBuilder::new().build());
         // SAFETY: we're in Drop, so self.0 won't be accessed again
         let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
         closer_pool.execute(move || drop(handle));

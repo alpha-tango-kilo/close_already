@@ -13,5 +13,4 @@ repository = "https://codeberg.org/alpha-tango-kilo/close_already"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-num_cpus = "1" # TODO: can get rid of this if you use threadpool's builder without specifying how many threads
 threadpool = "1"
