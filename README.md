@@ -19,7 +19,7 @@ I may add an async backend at some point, or otherwise I would welcome a PR supp
 To add it to your project:
 
 ```shell
-cargo add --target 'cfg(windows)' winres
+cargo add --target 'cfg(windows)' close_already
 ```
 
 Provided your type supports `Into<std::os::windows::io::OwnedHandle>` (which `std::fs::File` does), then you can eithe construct a [`FastClose`] with [`FastClose::new`], or take advantage of the [`FastCloseable`] trait and call `.fast_close()` to wrap your type.
