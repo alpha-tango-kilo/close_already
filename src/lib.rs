@@ -68,14 +68,14 @@ where
     }
 }
 
-pub trait FastCloseWrap: Sized
+pub trait FastCloseable: Sized
 where
     OwnedHandle: From<Self>,
 {
     fn fast_close(self) -> FastClose<Self>;
 }
 
-impl<H> FastCloseWrap for H
+impl<H> FastCloseable for H
 where
     OwnedHandle: From<Self>,
 {
@@ -100,7 +100,7 @@ pub mod fs {
         path::Path,
     };
 
-    use crate::FastCloseWrap;
+    use super::FastCloseable;
 
     /// Copies the contents of one file to another.
     /// This function will also copy the permission bits of the original file to
@@ -218,6 +218,8 @@ where
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.0.read(buf)
     }
+
+    // TODO: delegate specialised methods too
 }
 
 impl<H> io::Write for FastClose<H>
