@@ -15,6 +15,7 @@ use threadpool::ThreadPool;
 
 static CLOSER_POOL: OnceLock<ThreadPool> = OnceLock::new();
 
+/// A zero-sized wrapper that moves a file handle to a thread pool on drop
 #[derive(Debug)]
 pub struct FastClose<H: Into<OwnedHandle> + ?Sized>(ManuallyDrop<H>);
 
@@ -22,6 +23,10 @@ impl<H> FastClose<H>
 where
     H: Into<OwnedHandle>,
 {
+    /// Creates a new fast-closing file handle
+    ///
+    /// You may find it more convenient to use
+    /// [FastCloseable::fast_close()](FastCloseable::fast_close)
     #[inline(always)]
     pub fn new(handle: H) -> Self {
         FastClose(ManuallyDrop::new(handle))
@@ -32,6 +37,7 @@ impl<H> Drop for FastClose<H>
 where
     H: Into<OwnedHandle>,
 {
+    /// Submits the file handle to a thread pool to handle its closure
     fn drop(&mut self) {
         let closer_pool =
             CLOSER_POOL.get_or_init(|| ThreadPool::new(num_cpus::get()));
@@ -70,10 +76,12 @@ where
     }
 }
 
+/// A convenient method to chain with to wrap a file handle with [`FastClose`]
 pub trait FastCloseable: Sized
 where
     OwnedHandle: From<Self>,
 {
+    /// Wraps `self` in [`FastClose`]
     fn fast_close(self) -> FastClose<Self>;
 }
 
