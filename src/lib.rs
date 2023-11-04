@@ -333,3 +333,19 @@ where
         self.0.seek_write(buf, offset)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{fs::File, mem::size_of};
+
+    use crate::FastClose;
+
+    #[test]
+    fn is_zst() {
+        assert_eq!(
+            size_of::<FastClose<File>>(),
+            size_of::<File>(),
+            "FastClose is not a ZST"
+        );
+    }
+}
