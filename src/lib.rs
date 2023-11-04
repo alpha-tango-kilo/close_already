@@ -1,5 +1,7 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
+#![deny(rustdoc::broken_intra_doc_links)]
 #![warn(missing_docs)]
+#![doc = include_str!("../README.md")]
 
 use std::{
     io,
