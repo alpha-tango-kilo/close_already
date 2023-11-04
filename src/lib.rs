@@ -3,6 +3,12 @@
 #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
+#[cfg(not(windows))]
+compile_error!(
+    "close_already isn't currently compatible with non-Windows operating \
+     systems"
+);
+
 use std::{
     fmt::Arguments,
     io,
