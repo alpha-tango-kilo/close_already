@@ -6,10 +6,10 @@
 use std::{
     fmt::Arguments,
     io,
-    io::{IoSlice, IoSliceMut},
+    io::{IoSlice, IoSliceMut, SeekFrom},
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
-    os::windows::io::OwnedHandle,
+    os::windows::prelude::*,
     sync::OnceLock,
 };
 
@@ -222,7 +222,6 @@ pub mod fs {
 }
 
 // Blanket impls go here
-// TODO: Read, Seek, Write, Into<OwnedHandle>, IntoRawHandle
 impl<H> io::Read for FastClose<H>
 where
     H: io::Read + Into<OwnedHandle>,
@@ -287,5 +286,44 @@ where
         Self: Sized,
     {
         self
+    }
+}
+
+impl<H> io::Seek for FastClose<H>
+where
+    H: io::Seek + Into<OwnedHandle>,
+{
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        self.0.seek(pos)
+    }
+
+    fn rewind(&mut self) -> io::Result<()> {
+        self.0.rewind()
+    }
+
+    fn stream_position(&mut self) -> io::Result<u64> {
+        self.0.stream_position()
+    }
+}
+
+impl<H> AsHandle for FastClose<H>
+where
+    H: AsHandle + Into<OwnedHandle>,
+{
+    fn as_handle(&self) -> BorrowedHandle<'_> {
+        self.0.as_handle()
+    }
+}
+
+impl<H> FileExt for FastClose<H>
+where
+    H: FileExt + Into<OwnedHandle>,
+{
+    fn seek_read(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
+        self.0.seek_read(buf, offset)
+    }
+
+    fn seek_write(&self, buf: &[u8], offset: u64) -> io::Result<usize> {
+        self.0.seek_write(buf, offset)
     }
 }
