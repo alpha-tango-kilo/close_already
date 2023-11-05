@@ -3,6 +3,7 @@ steps:
     image: rust
     commands:
       - cargo test
+      - cargo doc --no-deps --document-private-items -- --out-dir /dev/null
   msrv:
     image: rust:1.72
     commands:
