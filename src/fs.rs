@@ -3,8 +3,8 @@
 //!
 //! This module provides replaces the standard library functions with
 //! `close_already`-using versions. The functions have identical signatures to
-//! make drop-in replacing possible, and near identical code (exceptions noted
-//! in documentation for specific methods)
+//! make drop-in replacing possible; and the implementation is as close to std
+//! as possible (differences noted in documentation for each method)
 use std::{
     fs::{File, OpenOptions},
     io,

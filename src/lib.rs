@@ -59,6 +59,9 @@ mod windows {
         H: Into<OwnedHandle>,
     {
         /// Submits the file handle to a thread pool to handle its closure
+        ///
+        /// Note: on non-Windows targets, nothing is done, the handle is just
+        /// dropped normally
         fn drop(&mut self) {
             let closer_pool =
                 CLOSER_POOL.get_or_init(|| ThreadPoolBuilder::new().build());
@@ -118,6 +121,9 @@ mod stub {
         H: Into<OwnedFd> + ?Sized,
     {
         /// Submits the file handle to a thread pool to handle its closure
+        ///
+        /// Note: on non-Windows targets, nothing is done, the handle is just
+        /// dropped normally
         fn drop(&mut self) {}
     }
 }
