@@ -47,7 +47,7 @@ mod windows {
         /// Creates a new fast-closing file handle
         ///
         /// You may find it more convenient to use
-        /// [FastCloseable::fast_close()](FastCloseable::fast_close)
+        /// [FastCloseable::fast_close()](crate::FastCloseable::fast_close)
         #[inline(always)]
         pub fn new(handle: H) -> Self {
             FastClose(ManuallyDrop::new(handle))
@@ -110,7 +110,7 @@ mod stub {
         /// Creates a new fast-closing file handle
         ///
         /// You may find it more convenient to use
-        /// [FastCloseable::fast_close()](FastCloseable::fast_close)
+        /// [FastCloseable::fast_close()](crate::FastCloseable::fast_close)
         pub fn new(handle: H) -> Self {
             FastClose(handle)
         }
@@ -128,7 +128,7 @@ mod stub {
     }
 }
 
-// Blanket impls that work for and non-stub go here
+// Blanket impls that work for stub and non-stub go here
 macro_rules! blanket_impls {
     ($handle_type:path) => {
         impl<H> Deref for FastClose<H>
