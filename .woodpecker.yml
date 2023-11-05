@@ -1,0 +1,10 @@
+steps:
+  test:
+    image: rust
+    commands:
+      - cargo test
+  msrv:
+    image: rust:1.72
+    commands:
+      - cargo check
+      - cargo test
