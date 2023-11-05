@@ -26,7 +26,7 @@ To add it to your project:
 cargo add close_already
 ```
 
-Provided your type supports `Into<std::os::windows::io::OwnedHandle>` (which `std::fs::File` does), then you can either construct a [`FastClose`] with [`FastClose::new`], or take advantage of the [`FastCloseable`] trait and call `.fast_close()` to wrap your type.
+Provided your type supports `Into<std::os::windows::io::OwnedHandle>` (which `std::fs::File` does), then you can either construct a [`FastClose`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html) with [`FastClose::new`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html#method.new), or take advantage of the [`FastCloseable`](https://docs.rs/close_already/latest/close_already/trait.FastCloseable.html) trait and call `.fast_close()` to wrap your type.
 That's it.
 
 Or if you're more of a `std::fs::read` and `std::fs::write` user, then all the functions that can take advantage of `close_already` have been re-implemented in the `fs` module
@@ -46,10 +46,10 @@ You can do this by putting the dependency under `[target.'cfg(windows)'.dependen
 
 As explained, the basic principle is to provide a threadpool which handles file closures
 
-This implementation uses a zero-sized wrapper type [`FastClose`] (no memory overhead, woo!), which has a custom [`Drop`](https://doc.rust-lang.org/std/ops/trait.Drop.html) implementation, which will send the file handle to a thread pool when it's no longer needed, to allow multiple threads to parallelise the waiting time for file closures.
-The thread pool is lazily initialised when the first [`FastClose`] is dropped (using the newly stabilised [`OnceLock`](https://doc.rust-lang.org/std/sync/struct.OnceLock.html))
+This implementation uses a zero-sized wrapper type [`FastClose`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html) (no memory overhead, woo!), which has a custom [`Drop`](https://doc.rust-lang.org/std/ops/trait.Drop.html) implementation, which will send the file handle to a thread pool when it's no longer needed, to allow multiple threads to parallelise the waiting time for file closures.
+The thread pool is lazily initialised when the first [`FastClose`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html) is dropped (using the newly stabilised [`OnceLock`](https://doc.rust-lang.org/std/sync/struct.OnceLock.html))
 
-The [`FastClose`] struct implements [`Deref`](https://doc.rust-lang.org/std/ops/trait.Deref.html) and [`DerefMut`](https://doc.rust-lang.org/std/ops/trait.DerefMut.html), meaning you can completely ignore its existence for all intents and purposes, and then let the magic happen as it goes out of scope
+The [`FastClose`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html) struct implements [`Deref`](https://doc.rust-lang.org/std/ops/trait.Deref.html) and [`DerefMut`](https://doc.rust-lang.org/std/ops/trait.DerefMut.html), meaning you can completely ignore its existence for all intents and purposes, and then let the magic happen as it goes out of scope
 
 The best part is how concise the solution is to implement, with the basic core logic taking under 30 lines; with most of the bulk coming from delegating trait implementations and providing standard library convenience function equivalents
 
