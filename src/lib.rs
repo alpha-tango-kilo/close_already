@@ -3,336 +3,292 @@
 #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
-#[cfg(not(windows))]
-compile_error!(
-    "close_already isn't currently compatible with non-Windows operating \
-     systems"
-);
-
 use std::{
     fmt::Arguments,
     io,
     io::{IoSlice, IoSliceMut, SeekFrom},
-    mem::ManuallyDrop,
     ops::{Deref, DerefMut},
-    os::windows::prelude::*,
-    sync::OnceLock,
 };
 
-use threadpool::{Builder as ThreadPoolBuilder, ThreadPool};
+// cfg specification for having either std::os::windows(::io::Handle) or
+// std::os::fd(::OwnedFd)
+#[cfg(not(any(windows, unix, target_os = "wasi")))]
+compile_error!(
+    "close_already doesn't support this target. Open an issue and let's \
+     discuss!"
+);
 
-static CLOSER_POOL: OnceLock<ThreadPool> = OnceLock::new();
+#[cfg(not(windows))]
+pub use stub::*;
+#[cfg(windows)]
+pub use windows::*;
 
-/// A zero-sized wrapper that moves a file handle to a thread pool on drop
-#[derive(Debug)]
-pub struct FastClose<H: Into<OwnedHandle> + ?Sized>(ManuallyDrop<H>);
+pub mod fs;
 
-impl<H> FastClose<H>
-where
-    H: Into<OwnedHandle>,
-{
-    /// Creates a new fast-closing file handle
-    ///
-    /// You may find it more convenient to use
-    /// [FastCloseable::fast_close()](FastCloseable::fast_close)
-    #[inline(always)]
-    pub fn new(handle: H) -> Self {
-        FastClose(ManuallyDrop::new(handle))
+#[cfg(windows)]
+mod windows {
+    pub use std::os::windows::io::OwnedHandle;
+    use std::{io, mem::ManuallyDrop, os::windows::prelude::*, sync::OnceLock};
+
+    use threadpool::{Builder as ThreadPoolBuilder, ThreadPool};
+
+    static CLOSER_POOL: OnceLock<ThreadPool> = OnceLock::new();
+
+    /// A zero-sized wrapper that moves a file handle to a thread pool on drop
+    #[derive(Debug)]
+    pub struct FastClose<H: Into<OwnedHandle> + ?Sized>(
+        pub(super) ManuallyDrop<H>,
+    );
+
+    impl<H> FastClose<H>
+    where
+        H: Into<OwnedHandle>,
+    {
+        /// Creates a new fast-closing file handle
+        ///
+        /// You may find it more convenient to use
+        /// [FastCloseable::fast_close()](FastCloseable::fast_close)
+        #[inline(always)]
+        pub fn new(handle: H) -> Self {
+            FastClose(ManuallyDrop::new(handle))
+        }
+    }
+
+    impl<H> Drop for FastClose<H>
+    where
+        H: Into<OwnedHandle>,
+    {
+        /// Submits the file handle to a thread pool to handle its closure
+        fn drop(&mut self) {
+            let closer_pool =
+                CLOSER_POOL.get_or_init(|| ThreadPoolBuilder::new().build());
+            // SAFETY: we're in Drop, so self.0 won't be accessed again
+            let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
+            closer_pool.execute(move || drop(handle));
+        }
+    }
+
+    // Windows-only blanket impls
+    impl<H> AsHandle for FastClose<H>
+    where
+        H: AsHandle + Into<OwnedHandle>,
+    {
+        fn as_handle(&self) -> BorrowedHandle<'_> {
+            self.0.as_handle()
+        }
+    }
+
+    impl<H> FileExt for FastClose<H>
+    where
+        H: FileExt + Into<OwnedHandle>,
+    {
+        fn seek_read(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
+            self.0.seek_read(buf, offset)
+        }
+
+        fn seek_write(&self, buf: &[u8], offset: u64) -> io::Result<usize> {
+            self.0.seek_write(buf, offset)
+        }
     }
 }
 
-impl<H> Drop for FastClose<H>
-where
-    H: Into<OwnedHandle>,
-{
-    /// Submits the file handle to a thread pool to handle its closure
-    fn drop(&mut self) {
-        let closer_pool =
-            CLOSER_POOL.get_or_init(|| ThreadPoolBuilder::new().build());
-        // SAFETY: we're in Drop, so self.0 won't be accessed again
-        let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
-        closer_pool.execute(move || drop(handle));
+#[cfg(not(windows))]
+mod stub {
+    use std::os::fd::OwnedFd;
+
+    /// A zero-sized wrapper that moves a file handle to a thread pool on drop
+    #[derive(Debug)]
+    pub struct FastClose<H: Into<OwnedFd> + ?Sized>(pub(super) H);
+
+    impl<H> FastClose<H>
+    where
+        H: Into<OwnedFd> + ?Sized,
+    {
+        /// Creates a new fast-closing file handle
+        ///
+        /// You may find it more convenient to use
+        /// [FastCloseable::fast_close()](FastCloseable::fast_close)
+        pub fn new(handle: H) -> Self {
+            FastClose(handle)
+        }
+    }
+
+    impl<H> Drop for FastClose<H>
+    where
+        H: Into<OwnedFd> + ?Sized,
+    {
+        /// Submits the file handle to a thread pool to handle its closure
+        fn drop(&mut self) {}
     }
 }
 
-impl<H> From<H> for FastClose<H>
-where
-    H: Into<OwnedHandle>,
-{
-    fn from(handle: H) -> Self {
-        Self::new(handle)
-    }
-}
+// Blanket impls that work for and non-stub go here
+macro_rules! blanket_impls {
+    ($handle_type:path) => {
+        impl<H> Deref for FastClose<H>
+        where
+            H: Into<$handle_type>,
+        {
+            type Target = H;
 
-impl<H> Deref for FastClose<H>
-where
-    H: Into<OwnedHandle>,
-{
-    type Target = H;
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+        impl<H> DerefMut for FastClose<H>
+        where
+            H: Into<$handle_type>,
+        {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
 
-impl<H> DerefMut for FastClose<H>
-where
-    H: Into<OwnedHandle>,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+        impl<H> From<H> for FastClose<H>
+        where
+            H: Into<$handle_type>,
+        {
+            fn from(handle: H) -> Self {
+                Self::new(handle)
+            }
+        }
 
-/// A convenient method to chain with to wrap a file handle with [`FastClose`]
-pub trait FastCloseable: Sized
-where
-    OwnedHandle: From<Self>,
-{
-    /// Wraps `self` in [`FastClose`]
-    fn fast_close(self) -> FastClose<Self>;
-}
+        impl<H> io::Read for FastClose<H>
+        where
+            H: io::Read + Into<$handle_type>,
+        {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                self.0.read(buf)
+            }
 
-impl<H> FastCloseable for H
-where
-    OwnedHandle: From<Self>,
-{
-    #[inline(always)]
-    fn fast_close(self) -> FastClose<Self> {
-        FastClose::new(self)
-    }
-}
+            fn read_vectored(
+                &mut self,
+                bufs: &mut [IoSliceMut<'_>],
+            ) -> io::Result<usize> {
+                self.0.read_vectored(bufs)
+            }
 
-/// Fast-closing replacements to the standard library filesystem manipulation
-/// operations
-///
-/// This module provides replaces the standard library functions with
-/// `close_already`-using versions. The functions have identical signatures to
-/// make drop-in replacing possible, and near identical code (exceptions noted
-/// in documentation for specific methods)
-pub mod fs {
-    use std::{
-        fs::{File, OpenOptions},
-        io,
-        io::{Read, Write},
-        path::Path,
+            fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
+                self.0.read_to_end(buf)
+            }
+
+            fn read_to_string(
+                &mut self,
+                buf: &mut String,
+            ) -> io::Result<usize> {
+                self.0.read_to_string(buf)
+            }
+
+            fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
+                self.0.read_exact(buf)
+            }
+
+            fn by_ref(&mut self) -> &mut Self
+            where
+                Self: Sized,
+            {
+                self
+            }
+        }
+
+        impl<H> io::Write for FastClose<H>
+        where
+            H: io::Write + Into<$handle_type>,
+        {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0.write(buf)
+            }
+
+            fn write_vectored(
+                &mut self,
+                bufs: &[IoSlice<'_>],
+            ) -> io::Result<usize> {
+                self.0.write_vectored(bufs)
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                self.0.flush()
+            }
+
+            fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+                self.0.write_all(buf)
+            }
+
+            fn write_fmt(&mut self, fmt: Arguments<'_>) -> io::Result<()> {
+                self.0.write_fmt(fmt)
+            }
+
+            fn by_ref(&mut self) -> &mut Self
+            where
+                Self: Sized,
+            {
+                self
+            }
+        }
+
+        impl<H> io::Seek for FastClose<H>
+        where
+            H: io::Seek + Into<$handle_type>,
+        {
+            fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+                self.0.seek(pos)
+            }
+
+            fn rewind(&mut self) -> io::Result<()> {
+                self.0.rewind()
+            }
+
+            fn stream_position(&mut self) -> io::Result<u64> {
+                self.0.stream_position()
+            }
+        }
     };
+}
 
-    use super::FastCloseable;
+#[cfg(windows)]
+blanket_impls!(std::os::windows::io::OwnedHandle);
 
-    /// Copies the contents of one file to another.
-    /// This function will also copy the permission bits of the original file to
-    /// the destination file
-    ///
-    /// This function will **overwrite** the contents of `to`
-    ///
-    /// Note that if `from` and `to` both point to the same file, then the file
-    /// will likely get truncated by this operation
-    ///
-    /// On success, the total number of bytes copied is returned and it is equal
-    /// to the length of the `to` file as reported by `metadata`
-    ///
-    /// # `close_already` differences
-    ///
-    /// This function is entirely re-implemented to open files and then delegate
-    /// to [`std::io::copy()`].
-    /// After the copy is completed, the permission bits are set
-    pub fn copy(
-        from: impl AsRef<Path>,
-        to: impl AsRef<Path>,
-    ) -> io::Result<u64> {
-        fn inner(from_path: &Path, to_path: &Path) -> io::Result<u64> {
-            let mut from = File::open(from_path)?.fast_close();
-            let mut to = OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(to_path)?
-                .fast_close();
-            let copied = io::copy(&mut from, &mut to)?;
-            std::fs::set_permissions(to_path, from.metadata()?.permissions())?;
-            Ok(copied)
+// Use OwnedFd as the non-Windows alternative that *should* work in most cases
+// (I would expect it to be very rare for a type to impl Into<OwnedFd> on *nix
+// and then not impl Into<OwnedHandle> on Windows.) If that's an issue, then
+// that's probably time to offload the complexity of conditional compile
+// wizardry onto the crate user, as I can't really make a trait bound for
+// "implements this trait on this other OS" (as far as I know!)
+#[cfg(not(windows))]
+blanket_impls!(std::os::fd::OwnedFd);
+
+// Convenience helpers
+
+macro_rules! fast_closeable {
+    ($handle_type:path) => {
+        /// Provides a convenience method to chain with that wraps a file handle
+        /// with [`FastClose`]
+        pub trait FastCloseable: Sized
+        where
+            $handle_type: From<Self>,
+        {
+            /// Wraps `self` in [`FastClose`]
+            fn fast_close(self) -> FastClose<Self>;
         }
-        inner(from.as_ref(), to.as_ref())
-    }
 
-    /// Read the entire contents of a file into a bytes vector
-    ///
-    /// This is a convenience function for using [`File::open`] and
-    /// [`read_to_end`](Read::read_to_end) with fewer imports and without an
-    /// intermediate variable
-    ///
-    /// # `close_already` differences
-    ///
-    /// The standard library uses a private function which gives a size hint to
-    /// `read_to_end`, presumably making it slightly more efficient than not
-    /// being able to provide a size hint. Otherwise, the implementation is
-    /// identical
-    pub fn read(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
-        fn inner(path: &Path) -> io::Result<Vec<u8>> {
-            let mut file = File::open(path)?.fast_close();
-            let size = file.metadata().map(|m| m.len() as usize).ok();
-            let mut bytes = Vec::with_capacity(size.unwrap_or(0));
-            file.read_to_end(&mut bytes)?;
-            Ok(bytes)
+        impl<H> FastCloseable for H
+        where
+            $handle_type: From<Self>,
+        {
+            #[inline(always)]
+            fn fast_close(self) -> FastClose<Self> {
+                FastClose::new(self)
+            }
         }
-        inner(path.as_ref())
-    }
-
-    /// Read the entire contents of a file into a string.
-    ///
-    /// This is a convenience function for using [`File::open`] and
-    /// [`read_to_string`](Read::read_to_string) with fewer imports and
-    /// without an intermediate variable
-    ///
-    /// # `close_already` differences
-    ///
-    /// The standard library uses a private function which gives a size hint to
-    /// `read_to_string`, presumably making it slightly more efficient than not
-    /// being able to provide a size hint. Otherwise, the implementation is
-    /// identical
-    pub fn read_to_string(path: impl AsRef<Path>) -> io::Result<String> {
-        fn inner(path: &Path) -> io::Result<String> {
-            let mut file = File::open(path)?;
-            let size = file.metadata().map(|m| m.len() as usize).ok();
-            let mut string = String::with_capacity(size.unwrap_or(0));
-            file.read_to_string(&mut string)?;
-            Ok(string)
-        }
-        inner(path.as_ref())
-    }
-
-    /// Write a slice as the entire contents of a file
-    ///
-    /// This function will create a file if it does not exist,
-    /// and will entirely replace its contents if it does
-    ///
-    /// Depending on the platform, this function may fail if the
-    /// full directory path does not exist
-    ///
-    /// This is a convenience function for using [`File::create`] and
-    /// [`write_all`](Write::write_all) with fewer imports
-    ///
-    /// # `close_already` differences
-    ///
-    /// None
-    pub fn write(
-        path: impl AsRef<Path>,
-        contents: impl AsRef<[u8]>,
-    ) -> io::Result<()> {
-        fn inner(path: &Path, contents: &[u8]) -> io::Result<()> {
-            File::create(path)?.fast_close().write_all(contents)
-        }
-        inner(path.as_ref(), contents.as_ref())
-    }
+    };
 }
 
-// Blanket impls go here
-impl<H> io::Read for FastClose<H>
-where
-    H: io::Read + Into<OwnedHandle>,
-{
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buf)
-    }
+#[cfg(windows)]
+fast_closeable!(std::os::windows::io::OwnedHandle);
 
-    fn read_vectored(
-        &mut self,
-        bufs: &mut [IoSliceMut<'_>],
-    ) -> io::Result<usize> {
-        self.0.read_vectored(bufs)
-    }
-
-    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
-        self.0.read_to_end(buf)
-    }
-
-    fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
-        self.0.read_to_string(buf)
-    }
-
-    fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
-        self.0.read_exact(buf)
-    }
-
-    fn by_ref(&mut self) -> &mut Self
-    where
-        Self: Sized,
-    {
-        self
-    }
-}
-
-impl<H> io::Write for FastClose<H>
-where
-    H: io::Write + Into<OwnedHandle>,
-{
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
-    }
-
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        self.0.write_vectored(bufs)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
-    }
-
-    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
-        self.0.write_all(buf)
-    }
-
-    fn write_fmt(&mut self, fmt: Arguments<'_>) -> io::Result<()> {
-        self.0.write_fmt(fmt)
-    }
-
-    fn by_ref(&mut self) -> &mut Self
-    where
-        Self: Sized,
-    {
-        self
-    }
-}
-
-impl<H> io::Seek for FastClose<H>
-where
-    H: io::Seek + Into<OwnedHandle>,
-{
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        self.0.seek(pos)
-    }
-
-    fn rewind(&mut self) -> io::Result<()> {
-        self.0.rewind()
-    }
-
-    fn stream_position(&mut self) -> io::Result<u64> {
-        self.0.stream_position()
-    }
-}
-
-impl<H> AsHandle for FastClose<H>
-where
-    H: AsHandle + Into<OwnedHandle>,
-{
-    fn as_handle(&self) -> BorrowedHandle<'_> {
-        self.0.as_handle()
-    }
-}
-
-impl<H> FileExt for FastClose<H>
-where
-    H: FileExt + Into<OwnedHandle>,
-{
-    fn seek_read(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
-        self.0.seek_read(buf, offset)
-    }
-
-    fn seek_write(&self, buf: &[u8], offset: u64) -> io::Result<usize> {
-        self.0.seek_write(buf, offset)
-    }
-}
+#[cfg(not(windows))]
+fast_closeable!(std::os::fd::OwnedFd);
 
 #[cfg(test)]
 mod tests {
