@@ -1,0 +1,30 @@
+on:
+  pull_request:
+
+name: Lint
+
+jobs:
+  format:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+      - run: |
+          cargo fmt -- --check --files-with-diff
+  clippy:
+    name: Clippy (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - shell: bash
+        run: |
+          cargo clippy

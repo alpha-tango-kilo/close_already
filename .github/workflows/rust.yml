@@ -1,0 +1,32 @@
+on:
+  pull_request:
+  push:
+
+name: Build & test
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          cargo test
+          cargo doc --no-deps --document-private-items
+  msrv:
+    name: Check MSRV (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.72.1
+      - shell: bash
+        run: |
+          cargo check
+          cargo test
