@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/close_already.svg)](https://crates.io/crates/close_already)
 [![Dependencies](https://deps.rs/repo/codeberg/alpha-tango-kilo/close_already/status.svg)](https://deps.rs/repo/codeberg/alpha-tango-kilo/close_already)
 
-**Closing files on Windows is slow, taking 1-10 milliseconds compared to microseconds (on MacOS, Linux, and friends).**
+**Closing files on Windows is slow, taking 1-10 milliseconds compared to microseconds on MacOS, Linux, and friends.**
 The "why?" is explained in [this blog post](https://gregoryszorc.com/blog/2021/04/06/surprisingly-slow/) by Gregory Szorc, which also suggests using thread pools to handle the closing of file handles on Windows.
 This is exactly what this crate implements, while being as unintruisive to the developer as possible.
 While not using this crate specifically, there are case studies in both [rustup](https://github.com/rust-lang/rustup/pull/1850) and [Mercurial](https://repo.mercurial-scm.org/hg/rev/2fdbf22a1b63f7b4c94393dbf45ad417da257fe0) where this technique has massively improved performance

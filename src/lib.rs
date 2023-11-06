@@ -10,7 +10,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-// cfg specification for having either std::os::windows(::io::Handle) or
+// cfg specification for having either std::os::windows(::io::OwnedHandle) or
 // std::os::fd(::OwnedFd)
 #[cfg(not(any(windows, unix, target_os = "wasi")))]
 compile_error!(
