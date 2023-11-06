@@ -27,9 +27,11 @@ pub mod fs;
 
 #[cfg(windows)]
 mod windows {
-    pub use std::os::windows::io::OwnedHandle;
     use std::{
-        fmt, io, mem::ManuallyDrop, ops::Deref, os::windows::prelude::*,
+        fmt, io,
+        mem::ManuallyDrop,
+        ops::Deref,
+        os::windows::{io::OwnedHandle, prelude::*},
         sync::OnceLock,
     };
 
