@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## v0.2.1 - 2023/11/05
+
 * Improve `Debug` representation on Windows
+* Fix GitHub/Codeberg README links
+* Have docs.rs show Windows documentation (given that's most relevant)
 
 ## v0.2.0 - 2023/11/05
 
