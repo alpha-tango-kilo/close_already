@@ -28,14 +28,16 @@ pub mod fs;
 #[cfg(windows)]
 mod windows {
     pub use std::os::windows::io::OwnedHandle;
-    use std::{io, mem::ManuallyDrop, os::windows::prelude::*, sync::OnceLock};
+    use std::{
+        fmt, io, mem::ManuallyDrop, ops::Deref, os::windows::prelude::*,
+        sync::OnceLock,
+    };
 
     use threadpool::{Builder as ThreadPoolBuilder, ThreadPool};
 
     static CLOSER_POOL: OnceLock<ThreadPool> = OnceLock::new();
 
     /// A zero-sized wrapper that moves a file handle to a thread pool on drop
-    #[derive(Debug)]
     pub struct FastClose<H: Into<OwnedHandle> + ?Sized>(
         pub(super) ManuallyDrop<H>,
     );
@@ -68,6 +70,15 @@ mod windows {
             // SAFETY: we're in Drop, so self.0 won't be accessed again
             let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
             closer_pool.execute(move || drop(handle));
+        }
+    }
+
+    impl<H> fmt::Debug for FastClose<H>
+    where
+        H: fmt::Debug + Into<OwnedHandle>,
+    {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.debug_tuple("FastClose").field(&self.0.deref()).finish()
         }
     }
 
@@ -308,6 +319,33 @@ mod tests {
             size_of::<FastClose<File>>(),
             size_of::<File>(),
             "FastClose is not a ZST"
+        );
+    }
+
+    #[test]
+    fn debug_repr_hides_manually_drop() {
+        let file = FastClose::new(File::open("Cargo.toml").unwrap());
+
+        let debug = format!("{file:?}");
+        println!("Debug: {debug}");
+        assert!(
+            !debug.contains("ManuallyDrop"),
+            "Debug should hide implementation details"
+        );
+        assert!(
+            debug.contains("File"),
+            "Debug (pretty) should show inner type"
+        );
+
+        let debug_pretty = format!("{file:#?}");
+        println!("Pretty debug: {debug_pretty}");
+        assert!(
+            !debug_pretty.contains("ManuallyDrop"),
+            "Debug (pretty) should hide implementation details"
+        );
+        assert!(
+            debug_pretty.contains("File"),
+            "Debug should show inner type"
         );
     }
 }
