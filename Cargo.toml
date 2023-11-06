@@ -14,3 +14,6 @@ repository = "https://codeberg.org/alpha-tango-kilo/close_already"
 
 [dependencies]
 threadpool = "1.7"
+
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
