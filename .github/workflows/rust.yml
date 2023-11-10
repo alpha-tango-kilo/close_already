@@ -13,8 +13,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: taiki-e/install-action@cargo-hack
-      - shell: bash
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: Run tests on all backends & test documentation
+        shell: bash
         run: |
           cargo hack \
             --each-feature \
@@ -31,8 +33,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.72.1
-      - uses: taiki-e/install-action@cargo-hack
-      - shell: bash
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: Ensure compilation & passing tests on all backends
+        shell: bash
         run: |
           cargo hack \
             --each-feature \
