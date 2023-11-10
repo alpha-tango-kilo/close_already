@@ -3,7 +3,7 @@ steps:
     image: rust
     commands:
       - .woodpecker/install_cargo_hack.sh
-      - cargo hack \
+      - cargo-hack \
         --each-feature \
         --exclude-no-default-features \
         --exclude-all-features \
@@ -13,12 +13,12 @@ steps:
     image: rust:1.72
     commands:
       - .woodpecker/install_cargo_hack.sh
-      - cargo hack \
+      - cargo-hack \
         --each-feature \
         --exclude-no-default-features \
         --exclude-all-features \
         check
-      - cargo hack \
+      - cargo-hack \
         --each-feature \
         --exclude-no-default-features \
         --exclude-all-features \
