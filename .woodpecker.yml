@@ -2,10 +2,24 @@ steps:
   test:
     image: rust
     commands:
-      - cargo test
+      - .woodpecker/install_cargo_hack.sh
+      - cargo hack \
+        --each-feature \
+        --exclude-no-default-features \
+        --exclude-all-features \
+        test
       - cargo doc --no-deps --document-private-items
   msrv:
     image: rust:1.72
     commands:
-      - cargo check
-      - cargo test
+      - .woodpecker/install_cargo_hack.sh
+      - cargo hack \
+        --each-feature \
+        --exclude-no-default-features \
+        --exclude-all-features \
+        check
+      - cargo hack \
+        --each-feature \
+        --exclude-no-default-features \
+        --exclude-all-features \
+        test
