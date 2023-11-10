@@ -19,9 +19,10 @@ compile_error!(
 );
 
 mutually_exclusive_features::exactly_one_of! {
-    "backend-rayon",
-    "backend-threadpool",
     "backend-async-std",
+    "backend-rayon",
+    "backend-smol",
+    "backend-threadpool",
 }
 
 #[cfg(not(windows))]
@@ -106,6 +107,18 @@ mod windows {
             // SAFETY: we're in Drop, so self.0 won't be accessed again
             let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
             async_std::task::spawn(async move { drop(handle) });
+        }
+
+        /// Submits the file handle as a `smol` task to handle its
+        /// closure
+        ///
+        /// Note: on non-Windows targets, nothing is done, the handle is just
+        /// dropped normally
+        #[cfg(feature = "backend-smol")]
+        fn drop(&mut self) {
+            // SAFETY: we're in Drop, so self.0 won't be accessed again
+            let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
+            smol::spawn(async move { drop(handle) }).detach();
         }
     }
 
