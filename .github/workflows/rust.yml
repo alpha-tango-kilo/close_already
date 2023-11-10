@@ -13,9 +13,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@cargo-hack
       - shell: bash
         run: |
-          cargo test
+          cargo hack \
+            --each-feature \
+            --exclude-no-default-features \
+            --exclude-all-features \
+            test
           cargo doc --no-deps --document-private-items
   msrv:
     name: Check MSRV (${{ matrix.os }})
@@ -26,7 +31,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.72.1
+      - uses: taiki-e/install-action@cargo-hack
       - shell: bash
         run: |
-          cargo check
-          cargo test
+          cargo hack \
+            --each-feature \
+            --exclude-no-default-features \
+            --exclude-all-features \
+            check
+          cargo hack \
+            --each-feature \
+            --exclude-no-default-features \
+            --exclude-all-features \
+            test

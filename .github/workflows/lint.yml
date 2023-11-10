@@ -25,6 +25,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: taiki-e/install-action@cargo-hack
       - shell: bash
         run: |
-          cargo clippy
+          cargo hack \
+            --each-feature \
+            --exclude-no-default-features \
+            --exclude-all-features \
+            clippy
