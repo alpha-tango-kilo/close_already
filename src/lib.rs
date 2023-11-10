@@ -18,6 +18,11 @@ compile_error!(
      discuss!"
 );
 
+mutually_exclusive_features::exactly_one_of! {
+    "backend-rayon",
+    "backend-threadpool"
+}
+
 #[cfg(not(windows))]
 pub use stub::*;
 #[cfg(windows)]
@@ -27,16 +32,19 @@ pub mod fs;
 
 #[cfg(windows)]
 mod windows {
+    #[cfg(feature = "backend-threadpool")]
+    use std::sync::OnceLock;
     use std::{
         fmt, io,
         mem::ManuallyDrop,
         ops::Deref,
         os::windows::{io::OwnedHandle, prelude::*},
-        sync::OnceLock,
     };
 
+    #[cfg(feature = "backend-threadpool")]
     use threadpool::{Builder as ThreadPoolBuilder, ThreadPool};
 
+    #[cfg(feature = "backend-threadpool")]
     static CLOSER_POOL: OnceLock<ThreadPool> = OnceLock::new();
 
     /// A zero-sized wrapper that moves a file handle to a thread pool on drop
@@ -66,12 +74,25 @@ mod windows {
         ///
         /// Note: on non-Windows targets, nothing is done, the handle is just
         /// dropped normally
+        #[cfg(feature = "backend-threadpool")]
         fn drop(&mut self) {
             let closer_pool =
                 CLOSER_POOL.get_or_init(|| ThreadPoolBuilder::new().build());
             // SAFETY: we're in Drop, so self.0 won't be accessed again
             let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
             closer_pool.execute(move || drop(handle));
+        }
+
+        /// Submits the file handle to `rayon`'s thread pool to handle its
+        /// closure
+        ///
+        /// Note: on non-Windows targets, nothing is done, the handle is just
+        /// dropped normally
+        #[cfg(feature = "backend-rayon")]
+        fn drop(&mut self) {
+            // SAFETY: we're in Drop, so self.0 won't be accessed again
+            let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
+            rayon::spawn(move || drop(handle));
         }
     }
 
