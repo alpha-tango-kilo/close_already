@@ -1,5 +1,6 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 #![deny(rustdoc::broken_intra_doc_links)]
+#![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
@@ -32,6 +33,7 @@ pub use windows::*;
 
 pub mod fs;
 
+/// The Windows implementation of [`FastClose`]
 #[cfg(windows)]
 mod windows {
     #[cfg(feature = "backend-threadpool")]
@@ -46,6 +48,7 @@ mod windows {
     #[cfg(feature = "backend-threadpool")]
     use threadpool::{Builder as ThreadPoolBuilder, ThreadPool};
 
+    /// A lazily initialised [`ThreadPool`] to send handle closures to
     #[cfg(feature = "backend-threadpool")]
     static CLOSER_POOL: OnceLock<ThreadPool> = OnceLock::new();
 
@@ -61,10 +64,22 @@ mod windows {
         /// Creates a new fast-closing file handle
         ///
         /// You may find it more convenient to use
-        /// [FastCloseable::fast_close()](crate::FastCloseable::fast_close)
+        /// [`FastCloseable::fast_close()`](crate::FastCloseable::fast_close)
         #[inline(always)]
         pub fn new(handle: H) -> Self {
             FastClose(ManuallyDrop::new(handle))
+        }
+
+        /// Gets the interal [`OwnedHandle`]
+        ///
+        /// # Safety
+        ///
+        /// `self.0` must never be accessed again.
+        /// This method should only be called on drop
+        #[inline]
+        unsafe fn get_handle(&mut self) -> OwnedHandle {
+            // SAFETY: relies on self.0 never being accessed again
+            unsafe { ManuallyDrop::take(&mut self.0) }.into()
         }
     }
 
@@ -81,7 +96,7 @@ mod windows {
             let closer_pool =
                 CLOSER_POOL.get_or_init(|| ThreadPoolBuilder::new().build());
             // SAFETY: we're in Drop, so self.0 won't be accessed again
-            let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
+            let handle = unsafe { self.get_handle() };
             closer_pool.execute(move || drop(handle));
         }
 
@@ -93,7 +108,7 @@ mod windows {
         #[cfg(feature = "backend-rayon")]
         fn drop(&mut self) {
             // SAFETY: we're in Drop, so self.0 won't be accessed again
-            let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
+            let handle = unsafe { self.get_handle() };
             rayon::spawn(move || drop(handle));
         }
 
@@ -105,7 +120,7 @@ mod windows {
         #[cfg(feature = "backend-async-std")]
         fn drop(&mut self) {
             // SAFETY: we're in Drop, so self.0 won't be accessed again
-            let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
+            let handle = unsafe { self.get_handle() };
             async_std::task::spawn(async move { drop(handle) });
         }
 
@@ -117,7 +132,7 @@ mod windows {
         #[cfg(feature = "backend-smol")]
         fn drop(&mut self) {
             // SAFETY: we're in Drop, so self.0 won't be accessed again
-            let handle = unsafe { ManuallyDrop::take(&mut self.0) }.into();
+            let handle = unsafe { self.get_handle() };
             smol::spawn(async move { drop(handle) }).detach();
         }
     }
@@ -155,6 +170,7 @@ mod windows {
     }
 }
 
+/// The non-Windows stub implementation of [`FastClose`]
 #[cfg(not(windows))]
 mod stub {
     use std::os::fd::OwnedFd;
@@ -170,7 +186,8 @@ mod stub {
         /// Creates a new fast-closing file handle
         ///
         /// You may find it more convenient to use
-        /// [FastCloseable::fast_close()](crate::FastCloseable::fast_close)
+        /// [`FastCloseable::fast_close()`](crate::FastCloseable::fast_close)
+        #[inline(always)]
         pub fn new(handle: H) -> Self {
             FastClose(handle)
         }
@@ -180,7 +197,7 @@ mod stub {
     where
         H: Into<OwnedFd> + ?Sized,
     {
-        /// Submits the file handle to a thread pool to handle its closure
+        /// Submits the file handle to your chosen backend to handle its closure
         ///
         /// Note: on non-Windows targets, nothing is done, the handle is just
         /// dropped normally
@@ -188,7 +205,10 @@ mod stub {
     }
 }
 
-// Blanket impls that work for stub and non-stub go here
+/// Writes blanket trait implementations for [`FastClose`]
+///
+/// Takes the path of the type the `FastClose`'s inner must convert to, i.e.
+/// `OwnedHandle` on Windows
 macro_rules! blanket_impls {
     ($handle_type:path) => {
         impl<H> Deref for FastClose<H>
@@ -324,8 +344,10 @@ blanket_impls!(std::os::windows::io::OwnedHandle);
 #[cfg(not(windows))]
 blanket_impls!(std::os::fd::OwnedFd);
 
-// Convenience helpers
-
+/// Generates the convenience [`FastCloseable`] trait
+///
+/// Takes the path of the type the `FastClose`'s inner must convert to, i.e.
+/// `OwnedHandle` on Windows
 macro_rules! fast_closeable {
     ($handle_type:path) => {
         /// Provides a convenience method to chain with that wraps a file handle

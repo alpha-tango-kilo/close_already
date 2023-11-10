@@ -4,6 +4,7 @@ alias c := clippy
 alias check := clippy
 alias t := test
 alias fmt := format
+alias d := doc
 
 @_default:
     echo "Using this Justfile for clippy/test requires cargo-hack & the"
@@ -33,3 +34,7 @@ test:
 # Run nightly rustfmt
 format:
     cargo +nightly fmt
+
+# Build internal documentation for this crate
+doc:
+    cargo doc --open --document-private-items
