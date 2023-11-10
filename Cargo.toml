@@ -12,12 +12,14 @@ repository = "https://codeberg.org/alpha-tango-kilo/close_already"
 
 [features]
 default = ["backend-threadpool"]
+backend-async-std = ["async-std"]
 backend-rayon = ["rayon"]
 backend-threadpool = ["threadpool"]
 
 [dependencies]
 mutually_exclusive_features = "0.0.3"
 # Backends
+async-std = { version = "1", optional = true }
 rayon = { version = "1", optional = true }
 threadpool = { version = "1.7", optional = true }
 
