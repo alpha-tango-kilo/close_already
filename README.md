@@ -1,6 +1,6 @@
 # `close_already` - speeding up programs handling lots of files on Windows
 
-[![Codeberg CI](https://ci.codeberg.org/api/badges/alpha-tango-kilo/close_already/status.svg)](https://ci.codeberg.org/alpha-tango-kilo/close_already)
+[![GitHub Actions](https://github.com/alpha-tango-kilo/close_already/actions/workflows/rust.yml/badge.svg)](https://github.com/alpha-tango-kilo/close_already/actions/workflows/rust.yml)
 [![Crates.io](https://img.shields.io/crates/v/close_already.svg)](https://crates.io/crates/close_already)
 [![Dependencies](https://deps.rs/repo/codeberg/alpha-tango-kilo/close_already/status.svg)](https://deps.rs/repo/codeberg/alpha-tango-kilo/close_already)
 
