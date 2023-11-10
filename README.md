@@ -15,15 +15,35 @@ If you're reading/writing relatively small files in the order of magnitude of hu
 It's designed to be easy to switch to and use, so try it out and benchmark it!
 Note that if your code is already trying to use multiple threads/cores to handle files (e.g. with `rayon`), your performance gains will be far more modest
 
-`close_already` is **not** async-friendly currently, using OS threads instead of green threads.
-I may add an async backend at some point, or otherwise I would welcome a PR supporting your preferred runtime
+### Compatibility
+<!-- If you change this heading name, change the heading link in the install section -->
+
+Each listed backend comes with a corresponding feature `backend-<name>`.
+To use a non-default backend, set `default-features = false` and enable the corresponding `backend-<name>` feature
+
+Supported backends:
+* [`threadpool`](https://lib.rs/crates/threadpool) - default, creates and uses its own OS-thread threadpool
+* [`rayon`](https://lib.rs/crates/rayon) - uses rayon's global threadpool
+* [`async-std`](https://lib.rs/crates/async-std) - uses `async-std`'s global executor. `async_std`'s `File` supports `close_already`
+* [`smol`](https://lib.rs/crates/smol) - uses `smol`'s global executor. `smol`'s `File` supports `close_already`
+
+#### Why not `tokio`?
+
+`tokio`'s [`File`](https://docs.rs/tokio/latest/tokio/fs/struct.File.html) does not support `IntoRawHandle` on Windows.
+It would be possible to add a backend to `close_already` to spawn `tokio` tasks, but you'd have to use `std::fs::File` instead of `tokio`'s, meaning no access to `Async{Read,Write}`
 
 ## How do I use it?
 
-To add it to your project:
+To add it to your project using the default [`threadpool`](https://lib.rs/crates/threadpool) backend:
 
 ```shell
 cargo add close_already
+```
+
+Or with a different backend (see [compatibility](#compatibility) for available backends):
+
+```shell
+cargo add close_already -F backend-<name> --no-default-features
 ```
 
 Provided your type supports `Into<std::os::windows::io::OwnedHandle>` (which `std::fs::File` does), then you can either construct a [`FastClose`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html) with [`FastClose::new`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html#method.new), or take advantage of the [`FastCloseable`](https://docs.rs/close_already/latest/close_already/trait.FastCloseable.html) trait and call `.fast_close()` to wrap your type.
@@ -33,8 +53,8 @@ Or if you're more of a `std::fs::read` and `std::fs::write` user, then all the f
 
 ### What if I'm not always targeting/developing on Windows?
 
-That will usually be fine, especially if you're just using standard library `File` or `fs` functions.
-`FastClose` simply won't create a threadpool and send file closures to it, but all the same structs/methods/traits will be available so you don't need conditional compilation `#[cfg]`s everywhere
+That will usually be fine. 
+`FastClose` simply won't create/use a threadpool and send file closures to it, but all the same structs/methods/traits will be available so you don't need conditional compilation `#[cfg]`s everywhere
 
 Where on Windows `FastClose` supports types that are `Into<OwnedHandle>`, on not-Windows instead the trait bound is `Into<OwnedFd>`.
 This is the closest approximation I can get, but if there's a type that supports one trait but not the other, then `FastClose` won't be able to help you and you'll need `#[cfg]` annotations etc. to avoid using `FastClose` when not on Windows
@@ -47,24 +67,33 @@ You can do this by putting the dependency under `[target.'cfg(windows)'.dependen
 As explained, the basic principle is to provide a threadpool which handles file closures
 
 This implementation uses a zero-sized wrapper type [`FastClose`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html) (no memory overhead, woo!), which has a custom [`Drop`](https://doc.rust-lang.org/std/ops/trait.Drop.html) implementation, which will send the file handle to a thread pool when it's no longer needed, to allow multiple threads to parallelise the waiting time for file closures.
-The thread pool is lazily initialised when the first [`FastClose`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html) is dropped (using the newly stabilised [`OnceLock`](https://doc.rust-lang.org/std/sync/struct.OnceLock.html))
+The thread pool is lazily initialised when the first [`FastClose`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html) is dropped (using the newly stabilised [`OnceLock`](https://doc.rust-lang.org/std/sync/struct.OnceLock.html))*
 
 The [`FastClose`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html) struct implements [`Deref`](https://doc.rust-lang.org/std/ops/trait.Deref.html) and [`DerefMut`](https://doc.rust-lang.org/std/ops/trait.DerefMut.html), meaning you can completely ignore its existence for all intents and purposes, and then let the magic happen as it goes out of scope
 
 The best part is how concise the solution is to implement, with the basic core logic taking under 30 lines; with most of the bulk coming from delegating trait implementations and providing standard library convenience function equivalents
 
-### Does it work?
+(* on non-`threadpool` backends, the global thread pool / executor is used)
+
+## Does it work?
 
 In short, yes, almost concerningly well.
 Proper benchmarks incoming, but using a patched version of [`norad`](https://github.com/linebender/norad) - a library for manipulating Unified Font Objects (a font source format notorious for having hundreds or thousands of small files) - I observed a 67% increase in write performance while `norad` was running single-threaded, or when enabling its `rayon` feature, I still observed a ~10% speed-up, despite a sub-optimal implementation (conflicting threadpools)
 
 ## Contributing
 
+There's a [Justfile](https://github.com/casey/just#readme) for ease of running checks & tests across multiple backends.
+It requires [`cargo-hack`](https://lib.rs/crates/cargo-hack) to be installed, and the `x86_64-pc-windows-msvc` target for your toolchain.
+Run `just` to see available recipes
+
+Please ensure your code is formatted with **nightly** `rustfmt` and there are no Clippy lints for any backend when submitting your PR
+
 ### I want to add support for _____ backend!
 
 Go for it!
-Put it behind a feature gate, ensure that you can't have multiple backends enabled, and then change the type within `CLOSER_POOL` and add an implementation of `Drop` for `FastClose` that submits the `OwnedHandle` to your pool.
-Everything else just works!
+Put it behind a feature gate, add the feature name to the `mutually_exclusive_features::exactly_one_of!` block at the top of `lib.rs`, and then add a new definition of `Drop::drop` for `windows::FastClose` that's enabled by your feature flag.
+If you're lazily initialising your own thread pool / executor, you'll naturally need a `static OnceLock` as well, the same as how `backend-threadpool` works.
+That's it!
 
 ### I want to add support for _____ trait that I need!
 
