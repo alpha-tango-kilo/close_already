@@ -651,6 +651,17 @@ mod tests {
             debug_pretty.contains("File"),
             "Debug should show inner type"
         );
+
+        #[cfg(feature = "backend-tokio")]
+        {
+            // Dropping `FastClose` without being in a tokio runtime will cause
+            // a panic
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap();
+            let _guard = runtime.enter();
+            drop(file);
+        }
     }
 
     // TODO: add trait implementation tests
