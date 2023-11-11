@@ -20,6 +20,7 @@ clippy:
       --exclude-no-default-features \
       --exclude-all-features \
       clippy \
+      --tests \
       --target x86_64-pc-windows-msvc
 
 # Run tests against all backends

@@ -664,5 +664,68 @@ mod tests {
         }
     }
 
-    // TODO: add trait implementation tests
+    #[cfg(any(
+        feature = "backend-async-std",
+        feature = "backend-smol",
+        feature = "backend-tokio",
+    ))]
+    mod async_traits {
+        #[cfg(feature = "backend-async-std")]
+        use async_std::{
+            fs::File, io::prelude::*, io::SeekFrom, task as runtime,
+        };
+        #[cfg(feature = "backend-smol")]
+        use smol::{self as runtime, fs::File, io::*};
+        #[cfg(feature = "backend-tokio")]
+        use tokio::{fs::File, io::*};
+        #[cfg(feature = "backend-tokio")]
+        use tokio_shim::RuntimeShim as runtime;
+
+        #[cfg(feature = "backend-tokio")]
+        mod tokio_shim {
+            pub struct RuntimeShim;
+
+            #[cfg(feature = "backend-tokio")]
+            impl RuntimeShim {
+                pub fn block_on<F: std::future::Future>(
+                    future: F,
+                ) -> F::Output {
+                    tokio::runtime::Builder::new_current_thread()
+                        .build()
+                        .unwrap()
+                        .block_on(future)
+                }
+            }
+        }
+
+        #[test]
+        fn read() {
+            runtime::block_on(async {
+                let mut file = File::open("Cargo.toml").await.unwrap();
+                let mut buf = [0; 5];
+                let _ = file.read(&mut buf).await.expect("read should succeed");
+            });
+        }
+
+        #[test]
+        fn seek() {
+            runtime::block_on(async {
+                let mut file = File::open("Cargo.toml").await.unwrap();
+                file.seek(SeekFrom::End(5))
+                    .await
+                    .expect("seek should succeed");
+            });
+        }
+
+        #[test]
+        fn write() {
+            let std_file = tempfile::tempfile().unwrap();
+            runtime::block_on(async move {
+                let mut file = File::from(std_file);
+                file.write_all(&[1, 2, 3])
+                    .await
+                    .expect("write should succeed");
+            });
+        }
+    }
 }

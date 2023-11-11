@@ -12,11 +12,11 @@ repository = "https://codeberg.org/alpha-tango-kilo/close_already"
 
 [features]
 default = ["backend-threadpool"]
-backend-async-std = ["async-std"]
-backend-rayon = ["rayon"]
-backend-smol = ["smol"]
-backend-threadpool = ["threadpool"]
-backend-tokio = ["tokio"]
+backend-async-std = ["dep:async-std"]
+backend-rayon = ["dep:rayon"]
+backend-smol = ["dep:smol"]
+backend-threadpool = ["dep:threadpool"]
+backend-tokio = ["dep:tokio"]
 
 [dependencies]
 mutually_exclusive_features = "0.0.3"
@@ -26,6 +26,11 @@ rayon = { version = "1", optional = true }
 smol = { version = "1", optional = true }
 tokio = { version = "1", features = ["rt", "fs"], optional = true }
 threadpool = { version = "1.7", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+# Have to include this so we can get Async{Read,Write}Ext through feature unification
+tokio = { version = "1", features = ["io-util"] }
 
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"
