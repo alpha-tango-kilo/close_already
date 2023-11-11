@@ -6,7 +6,6 @@
 
 use std::{
     fmt::Arguments,
-    fs::File,
     io,
     io::{IoSlice, IoSliceMut, SeekFrom},
     ops::{Deref, DerefMut},
@@ -39,23 +38,12 @@ mod windows {
     #[cfg(feature = "backend-threadpool")]
     use threadpool::{Builder as ThreadPoolBuilder, ThreadPool};
 
-    use crate::FastCloseable;
-
     /// A lazily initialised [`ThreadPool`] to send handle closures to
     #[cfg(feature = "backend-threadpool")]
     static CLOSER_POOL: OnceLock<ThreadPool> = OnceLock::new();
 
     /// A zero-sized wrapper that moves a file handle to a thread pool on drop
     pub struct FastClose<H: Send + 'static>(pub(super) ManuallyDrop<H>);
-
-    // Public interface
-    impl<H: FastCloseable> FastClose<H> {
-        /// Creates a new fast-closing file handle
-        #[inline(always)]
-        pub fn new(handle: H) -> Self {
-            handle.fast_close()
-        }
-    }
 
     impl<H: Send + 'static> FastClose<H> {
         // Private definition for FastCloseable to use
@@ -177,20 +165,9 @@ mod windows {
 /// The non-Windows stub implementation of [`FastClose`]
 #[cfg(not(windows))]
 mod stub {
-    use crate::FastCloseable;
-
     /// A zero-sized wrapper that moves a file handle to a thread pool on drop
     #[derive(Debug)]
     pub struct FastClose<H: Send + 'static>(pub(super) H);
-
-    // Public interface
-    impl<H: FastCloseable> FastClose<H> {
-        /// Creates a new fast-closing file handle
-        #[inline(always)]
-        pub fn new(handle: H) -> Self {
-            handle.fast_close()
-        }
-    }
 
     impl<H: Send + 'static> FastClose<H> {
         // Private definition for FastCloseable to use
@@ -210,8 +187,18 @@ mod stub {
     }
 }
 
+// Public interface goes here
+impl<H: FastCloseable> FastClose<H> {
+    /// Creates a new fast-closing file handle
+    #[inline(always)]
+    pub fn new(handle: H) -> Self {
+        handle.fast_close()
+    }
+}
+
 // Method impls for stub or non-stub
 impl<H: Send + 'static> FastClose<H> {
+    /// Pin projects from `self` to the inner file handle
     #[cfg(any(
         feature = "backend-async-std",
         feature = "backend-smol",
@@ -333,8 +320,6 @@ where
     }
 }
 
-// TODO: add Async traits in here for those backends
-
 /// Indicates compatibility with [`FastClose`], providing a convenience method
 /// for wrapping a type
 ///
@@ -367,9 +352,9 @@ pub trait FastCloseable: Send {
     }
 }
 
-// Add compatible struct implementations
-impl FastCloseable for File {}
+impl FastCloseable for std::fs::File {}
 
+/// Trait implementations for `async-std` types
 #[cfg(feature = "backend-async-std")]
 mod async_std_impls {
     use std::{
@@ -455,6 +440,7 @@ mod async_std_impls {
     }
 }
 
+/// Trait implementations for `smol` types
 #[cfg(feature = "backend-smol")]
 mod smol_impls {
     use std::{
@@ -538,6 +524,7 @@ mod smol_impls {
     }
 }
 
+/// Trait implementations for `tokio` types
 #[cfg(feature = "backend-tokio")]
 mod tokio_impls {
     use std::{

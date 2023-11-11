@@ -24,13 +24,9 @@ To use a non-default backend, set `default-features = false` and enable the corr
 Supported backends:
 * [`threadpool`](https://lib.rs/crates/threadpool) - default, creates and uses its own OS-thread threadpool
 * [`rayon`](https://lib.rs/crates/rayon) - uses rayon's global threadpool
-* [`async-std`](https://lib.rs/crates/async-std) - uses `async-std`'s global executor. `async_std`'s `File` supports `close_already`
-* [`smol`](https://lib.rs/crates/smol) - uses `smol`'s global executor. `smol`'s `File` supports `close_already`
-
-#### Why not `tokio`?
-
-`tokio`'s [`File`](https://docs.rs/tokio/latest/tokio/fs/struct.File.html) does not support `IntoRawHandle` on Windows.
-It would be possible to add a backend to `close_already` to spawn `tokio` tasks, but you'd have to use `std::fs::File` instead of `tokio`'s, meaning no access to `Async{Read,Write}`
+* [`async-std`](https://lib.rs/crates/async-std) - uses `async-std`'s global executor. `async_std`'s `File` is supported
+* [`smol`](https://lib.rs/crates/smol) - uses `smol`'s global executor. `smol`'s `File` is supported
+* [`tokio`](https://lib.rs/crates/tokio) - uses `tokio`'s global executor. `tokio`'s `File` is supported. Enables the `rt` and `fs` features
 
 ## How do I use it?
 
@@ -46,21 +42,16 @@ Or with a different backend (see [compatibility](#compatibility) for available b
 cargo add close_already -F backend-<name> --no-default-features
 ```
 
-Provided your type supports `Into<std::os::windows::io::OwnedHandle>` (which `std::fs::File` does), then you can either construct a [`FastClose`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html) with [`FastClose::new`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html#method.new), or take advantage of the [`FastCloseable`](https://docs.rs/close_already/latest/close_already/trait.FastCloseable.html) trait and call `.fast_close()` to wrap your type.
+You can either construct a [`FastClose`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html) with [`FastClose::new`](https://docs.rs/close_already/latest/close_already/struct.FastClose.html#method.new), or take advantage of the [`FastCloseable`](https://docs.rs/close_already/latest/close_already/trait.FastCloseable.html) trait and call `.fast_close()` to wrap your type.
+The `File` type of the standard library and any backends that provide an alternative are supported.
 That's it.
 
 Or if you're more of a `std::fs::read` and `std::fs::write` user, then all the functions that can take advantage of `close_already` have been re-implemented in the `fs` module
 
 ### What if I'm not always targeting/developing on Windows?
 
-That will usually be fine. 
+Not a problem! 
 `FastClose` simply won't create/use a threadpool and send file closures to it, but all the same structs/methods/traits will be available so you don't need conditional compilation `#[cfg]`s everywhere
-
-Where on Windows `FastClose` supports types that are `Into<OwnedHandle>`, on not-Windows instead the trait bound is `Into<OwnedFd>`.
-This is the closest approximation I can get, but if there's a type that supports one trait but not the other, then `FastClose` won't be able to help you and you'll need `#[cfg]` annotations etc. to avoid using `FastClose` when not on Windows
-
-Also, if you're on a very rare OS that doesn't have either `OwnedHandle` or `OwnedFd`, then `close_already` simply won't compile and you'll need to make the dependency OS-dependent (or contribute support for that OS!)
-You can do this by putting the dependency under `[target.'cfg(windows)'.dependencies]` in Cargo.toml, and then using conditional flags where necessary in your code
 
 ## How does `close_already` work?
 
@@ -95,10 +86,13 @@ Put it behind a feature gate, add the feature name to the `mutually_exclusive_fe
 If you're lazily initialising your own thread pool / executor, you'll naturally need a `static OnceLock` as well, the same as how `backend-threadpool` works.
 That's it!
 
+In the case of async backends that provide their own file types, you may also want to implement `FastCloseable` on that type, and forward any relevant traits (e.g. `Async{Read,Seek,Write}`).
+See `mod smol_impls` for an example
+
 ### I want to add support for _____ trait that I need!
 
 Go for it!
-Make sure the generic bounds include `H: Into<OwnedHandle>`, and it should work out just fine.
+Make sure the generic bounds include `H: Send + 'static`, and it should work out just fine.
 If the trait you're adding support for is not part of the standard library (or is on nightly), please put it behind a feature gate (default off)
 
 ## License
