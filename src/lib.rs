@@ -13,6 +13,7 @@ use std::{
 
 mutually_exclusive_features::exactly_one_of! {
     "backend-async-std",
+    "backend-blocking",
     "backend-rayon",
     "backend-smol",
     "backend-threadpool",
@@ -78,6 +79,18 @@ mod windows {
             // SAFETY: we're in Drop, so self.0 won't be accessed again
             let handle = unsafe { self.get_handle() };
             closer_pool.execute(move || drop(handle));
+        }
+
+        /// Submits the file handle as a `blocking` task to handle its
+        /// closure
+        ///
+        /// Note: on non-Windows targets, nothing is done, the handle is just
+        /// dropped normally
+        #[cfg(feature = "backend-blocking")]
+        fn drop(&mut self) {
+            // SAFETY: we're in Drop, so self.0 won't be accessed again
+            let handle = unsafe { self.get_handle() };
+            blocking::unblock(move || drop(handle)).detach();
         }
 
         /// Submits the file handle to `rayon`'s thread pool to handle its

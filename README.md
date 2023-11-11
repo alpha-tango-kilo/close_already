@@ -22,8 +22,9 @@ Each listed backend comes with a corresponding feature `backend-<name>`.
 To use a non-default backend, set `default-features = false` and enable the corresponding `backend-<name>` feature
 
 Supported backends:
-* [`threadpool`](https://lib.rs/crates/threadpool) - default, creates and uses its own OS-thread threadpool
-* [`rayon`](https://lib.rs/crates/rayon) - uses rayon's global threadpool
+* [`threadpool`](https://lib.rs/crates/threadpool) - default, creates and uses its own OS-thread thread pool
+* [`blocking`](https://lib.rs/crates/blocking) - uses `blocking`'s thread pool
+* [`rayon`](https://lib.rs/crates/rayon) - uses `rayon`'s global thread pool
 * [`async-std`](https://lib.rs/crates/async-std) - uses `async-std`'s global executor. `async_std`'s `File` is supported
 * [`smol`](https://lib.rs/crates/smol) - uses `smol`'s global executor. `smol`'s `File` is supported
 * [`tokio`](https://lib.rs/crates/tokio) - uses `tokio`'s global executor. `tokio`'s `File` is supported. Enables the `rt` and `fs` features
