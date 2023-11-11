@@ -17,6 +17,7 @@ mutually_exclusive_features::exactly_one_of! {
     "backend-rayon",
     "backend-smol",
     "backend-threadpool",
+    "backend-tokio",
 }
 
 #[cfg(not(windows))]
@@ -126,6 +127,18 @@ mod windows {
             let handle = unsafe { self.get_handle() };
             smol::spawn(async move { drop(handle) }).detach();
         }
+
+        /// Submits the file handle as a `tokio` task to handle its
+        /// closure
+        ///
+        /// Note: on non-Windows targets, nothing is done, the handle is just
+        /// dropped normally
+        #[cfg(feature = "backend-tokio")]
+        fn drop(&mut self) {
+            // SAFETY: we're in Drop, so self.0 won't be accessed again
+            let handle = unsafe { self.get_handle() };
+            tokio::task::spawn(async move { drop(handle) });
+        }
     }
 
     impl<H: Send + 'static> fmt::Debug for FastClose<H>
@@ -199,7 +212,12 @@ mod stub {
 
 // Method impls for stub or non-stub
 impl<H: Send + 'static> FastClose<H> {
-    #[cfg(any(feature = "backend-async-std", feature = "backend-smol"))]
+    #[cfg(any(
+        feature = "backend-async-std",
+        feature = "backend-smol",
+        feature = "backend-tokio",
+    ))]
+    #[inline]
     fn pin_project_to_inner(
         self: std::pin::Pin<&mut Self>,
     ) -> std::pin::Pin<&mut H> {
@@ -516,6 +534,92 @@ mod smol_impls {
             cx: &mut Context<'_>,
         ) -> Poll<io::Result<()>> {
             self.pin_project_to_inner().poll_close(cx)
+        }
+    }
+}
+
+#[cfg(feature = "backend-tokio")]
+mod tokio_impls {
+    use std::{
+        io::Error,
+        pin::Pin,
+        task::{Context, Poll},
+    };
+
+    use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite, ReadBuf};
+
+    use super::*;
+
+    impl FastCloseable for tokio::fs::File {}
+
+    impl<H> AsyncRead for FastClose<H>
+    where
+        H: AsyncRead + Send + 'static,
+    {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            self.pin_project_to_inner().poll_read(cx, buf)
+        }
+    }
+
+    impl<H> AsyncSeek for FastClose<H>
+    where
+        H: AsyncSeek + Send + 'static,
+    {
+        fn start_seek(
+            self: Pin<&mut Self>,
+            position: SeekFrom,
+        ) -> io::Result<()> {
+            self.pin_project_to_inner().start_seek(position)
+        }
+
+        fn poll_complete(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<io::Result<u64>> {
+            self.pin_project_to_inner().poll_complete(cx)
+        }
+    }
+
+    impl<H> AsyncWrite for FastClose<H>
+    where
+        H: AsyncWrite + Send + 'static,
+    {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<Result<usize, Error>> {
+            self.pin_project_to_inner().poll_write(cx, buf)
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Error>> {
+            self.pin_project_to_inner().poll_flush(cx)
+        }
+
+        fn poll_shutdown(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Error>> {
+            self.pin_project_to_inner().poll_shutdown(cx)
+        }
+
+        fn poll_write_vectored(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            bufs: &[IoSlice<'_>],
+        ) -> Poll<Result<usize, Error>> {
+            self.pin_project_to_inner().poll_write_vectored(cx, bufs)
+        }
+
+        fn is_write_vectored(&self) -> bool {
+            self.0.is_write_vectored()
         }
     }
 }
