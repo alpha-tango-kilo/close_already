@@ -197,6 +197,17 @@ mod stub {
     }
 }
 
+// Method impls for stub or non-stub
+impl<H: Send + 'static> FastClose<H> {
+    #[cfg(any(feature = "backend-async-std", feature = "backend-smol"))]
+    fn pin_project_to_inner(
+        self: std::pin::Pin<&mut Self>,
+    ) -> std::pin::Pin<&mut H> {
+        // SAFETY: `self.0` is pinned when `self` is pinned
+        unsafe { self.map_unchecked_mut(|fc| fc.deref_mut()) }
+    }
+}
+
 impl<H: Send + 'static> Deref for FastClose<H> {
     type Target = H;
 
@@ -342,10 +353,172 @@ pub trait FastCloseable: Send {
 impl FastCloseable for File {}
 
 #[cfg(feature = "backend-async-std")]
-impl FastCloseable for async_std::fs::File {}
+mod async_std_impls {
+    use std::{
+        pin::Pin,
+        task::{Context, Poll},
+    };
+
+    use async_std::io::{
+        Read as AsyncRead, Seek as AsyncSeek, Write as AsyncWrite,
+    };
+
+    use super::*;
+
+    impl FastCloseable for async_std::fs::File {}
+
+    impl<H> AsyncRead for FastClose<H>
+    where
+        H: AsyncRead + Send + 'static,
+    {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<io::Result<usize>> {
+            self.pin_project_to_inner().poll_read(cx, buf)
+        }
+
+        fn poll_read_vectored(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            bufs: &mut [IoSliceMut<'_>],
+        ) -> Poll<io::Result<usize>> {
+            self.pin_project_to_inner().poll_read_vectored(cx, bufs)
+        }
+    }
+
+    impl<H> AsyncSeek for FastClose<H>
+    where
+        H: AsyncSeek + Send + 'static,
+    {
+        fn poll_seek(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            pos: SeekFrom,
+        ) -> Poll<io::Result<u64>> {
+            self.pin_project_to_inner().poll_seek(cx, pos)
+        }
+    }
+
+    impl<H> AsyncWrite for FastClose<H>
+    where
+        H: AsyncWrite + Send + 'static,
+    {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            self.pin_project_to_inner().poll_write(cx, buf)
+        }
+
+        fn poll_write_vectored(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            bufs: &[IoSlice<'_>],
+        ) -> Poll<io::Result<usize>> {
+            self.pin_project_to_inner().poll_write_vectored(cx, bufs)
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<io::Result<()>> {
+            self.pin_project_to_inner().poll_flush(cx)
+        }
+
+        fn poll_close(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<io::Result<()>> {
+            self.pin_project_to_inner().poll_close(cx)
+        }
+    }
+}
 
 #[cfg(feature = "backend-smol")]
-impl FastCloseable for smol::fs::File {}
+mod smol_impls {
+    use std::{
+        pin::Pin,
+        task::{Context, Poll},
+    };
+
+    use smol::io::{AsyncRead, AsyncSeek, AsyncWrite};
+
+    use super::*;
+
+    impl FastCloseable for smol::fs::File {}
+
+    impl<H> AsyncRead for FastClose<H>
+    where
+        H: AsyncRead + Send + 'static,
+    {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<io::Result<usize>> {
+            self.pin_project_to_inner().poll_read(cx, buf)
+        }
+
+        fn poll_read_vectored(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            bufs: &mut [IoSliceMut<'_>],
+        ) -> Poll<io::Result<usize>> {
+            self.pin_project_to_inner().poll_read_vectored(cx, bufs)
+        }
+    }
+
+    impl<H> AsyncSeek for FastClose<H>
+    where
+        H: AsyncSeek + Send + 'static,
+    {
+        fn poll_seek(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            pos: SeekFrom,
+        ) -> Poll<io::Result<u64>> {
+            self.pin_project_to_inner().poll_seek(cx, pos)
+        }
+    }
+
+    impl<H> AsyncWrite for FastClose<H>
+    where
+        H: AsyncWrite + Send + 'static,
+    {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            self.pin_project_to_inner().poll_write(cx, buf)
+        }
+
+        fn poll_write_vectored(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            bufs: &[IoSlice<'_>],
+        ) -> Poll<io::Result<usize>> {
+            self.pin_project_to_inner().poll_write_vectored(cx, bufs)
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<io::Result<()>> {
+            self.pin_project_to_inner().poll_flush(cx)
+        }
+
+        fn poll_close(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<io::Result<()>> {
+            self.pin_project_to_inner().poll_close(cx)
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
