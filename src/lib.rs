@@ -306,12 +306,29 @@ where
 
 // TODO: add Async traits in here for those backends
 
-/// Provides a convenience method to chain with that wraps a file handle
-/// with [`FastClose`]
+/// Indicates compatibility with [`FastClose`], providing a convenience method
+/// for wrapping a type
+///
+/// # Implementing `FastCloseable`
+///
+/// `FastCloseable` can be implemented on any type that will trigger a call to
+/// Windows' [`CloseHandle`](https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle) on drop
+///
+/// Phrased another way, you can implement `FastCloseable` on any file wrapper
+/// type that is:
+/// - Owned, not borrowed (`'static`)
+/// - Not reference counted (use [`FastClose`] **inside** of an `Arc`, not
+///   outside)
+/// - `Send`
+/// - `!Clone`
+///
+/// You should use the default implementation for `fast_close()`, as it is the
+/// only public API for constructing a `FastClose` that doesn't rely on the
+/// `FastCloseable` trait (`FastClose::new` just calls `.fast_close()` on the
+/// parameter)
 pub trait FastCloseable: Send {
     /// Wraps `self` in [`FastClose`]
     #[inline(always)]
-
     fn fast_close(self) -> FastClose<Self>
     where
         Self: Sized,
@@ -323,6 +340,12 @@ pub trait FastCloseable: Send {
 
 // Add compatible struct implementations
 impl FastCloseable for File {}
+
+#[cfg(feature = "backend-async-std")]
+impl FastCloseable for async_std::fs::File {}
+
+#[cfg(feature = "backend-smol")]
+impl FastCloseable for smol::fs::File {}
 
 #[cfg(test)]
 mod tests {
