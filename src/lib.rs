@@ -6,18 +6,11 @@
 
 use std::{
     fmt::Arguments,
+    fs::File,
     io,
     io::{IoSlice, IoSliceMut, SeekFrom},
     ops::{Deref, DerefMut},
 };
-
-// cfg specification for having either std::os::windows(::io::OwnedHandle) or
-// std::os::fd(::OwnedFd)
-#[cfg(not(any(windows, unix, target_os = "wasi")))]
-compile_error!(
-    "close_already doesn't support this target. Open an issue and let's \
-     discuss!"
-);
 
 mutually_exclusive_features::exactly_one_of! {
     "backend-async-std",
@@ -27,9 +20,9 @@ mutually_exclusive_features::exactly_one_of! {
 }
 
 #[cfg(not(windows))]
-pub use stub::*;
+pub use stub::FastClose;
 #[cfg(windows)]
-pub use windows::*;
+pub use windows::FastClose;
 
 pub mod fs;
 
@@ -39,34 +32,35 @@ mod windows {
     #[cfg(feature = "backend-threadpool")]
     use std::sync::OnceLock;
     use std::{
-        fmt, io,
-        mem::ManuallyDrop,
-        ops::Deref,
-        os::windows::{io::OwnedHandle, prelude::*},
+        fmt, io, mem::ManuallyDrop, ops::Deref, os::windows::prelude::*,
     };
 
     #[cfg(feature = "backend-threadpool")]
     use threadpool::{Builder as ThreadPoolBuilder, ThreadPool};
+
+    use crate::FastCloseable;
 
     /// A lazily initialised [`ThreadPool`] to send handle closures to
     #[cfg(feature = "backend-threadpool")]
     static CLOSER_POOL: OnceLock<ThreadPool> = OnceLock::new();
 
     /// A zero-sized wrapper that moves a file handle to a thread pool on drop
-    pub struct FastClose<H: Into<OwnedHandle> + ?Sized>(
-        pub(super) ManuallyDrop<H>,
-    );
+    pub struct FastClose<H: Send + 'static>(pub(super) ManuallyDrop<H>);
 
-    impl<H> FastClose<H>
-    where
-        H: Into<OwnedHandle>,
-    {
+    // Public interface
+    impl<H: FastCloseable> FastClose<H> {
         /// Creates a new fast-closing file handle
-        ///
-        /// You may find it more convenient to use
-        /// [`FastCloseable::fast_close()`](crate::FastCloseable::fast_close)
         #[inline(always)]
         pub fn new(handle: H) -> Self {
+            handle.fast_close()
+        }
+    }
+
+    impl<H: Send + 'static> FastClose<H> {
+        // Private definition for FastCloseable to use
+        /// Creates a new fast-closing file handle
+        #[inline]
+        pub(super) fn _new(handle: H) -> FastClose<H> {
             FastClose(ManuallyDrop::new(handle))
         }
 
@@ -77,16 +71,13 @@ mod windows {
         /// `self.0` must never be accessed again.
         /// This method should only be called on drop
         #[inline]
-        unsafe fn get_handle(&mut self) -> OwnedHandle {
+        unsafe fn get_handle(&mut self) -> H {
             // SAFETY: relies on self.0 never being accessed again
-            unsafe { ManuallyDrop::take(&mut self.0) }.into()
+            unsafe { ManuallyDrop::take(&mut self.0) }
         }
     }
 
-    impl<H> Drop for FastClose<H>
-    where
-        H: Into<OwnedHandle>,
-    {
+    impl<H: Send + 'static> Drop for FastClose<H> {
         /// Submits the file handle to a thread pool to handle its closure
         ///
         /// Note: on non-Windows targets, nothing is done, the handle is just
@@ -137,9 +128,9 @@ mod windows {
         }
     }
 
-    impl<H> fmt::Debug for FastClose<H>
+    impl<H: Send + 'static> fmt::Debug for FastClose<H>
     where
-        H: fmt::Debug + Into<OwnedHandle>,
+        H: fmt::Debug,
     {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             f.debug_tuple("FastClose").field(&self.0.deref()).finish()
@@ -147,18 +138,18 @@ mod windows {
     }
 
     // Windows-only blanket impls
-    impl<H> AsHandle for FastClose<H>
+    impl<H: Send + 'static> AsHandle for FastClose<H>
     where
-        H: AsHandle + Into<OwnedHandle>,
+        H: AsHandle,
     {
         fn as_handle(&self) -> BorrowedHandle<'_> {
             self.0.as_handle()
         }
     }
 
-    impl<H> FileExt for FastClose<H>
+    impl<H: Send + 'static> FileExt for FastClose<H>
     where
-        H: FileExt + Into<OwnedHandle>,
+        H: FileExt,
     {
         fn seek_read(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
             self.0.seek_read(buf, offset)
@@ -173,30 +164,31 @@ mod windows {
 /// The non-Windows stub implementation of [`FastClose`]
 #[cfg(not(windows))]
 mod stub {
-    use std::os::fd::OwnedFd;
+    use crate::FastCloseable;
 
     /// A zero-sized wrapper that moves a file handle to a thread pool on drop
     #[derive(Debug)]
-    pub struct FastClose<H: Into<OwnedFd> + ?Sized>(pub(super) H);
+    pub struct FastClose<H: Send + 'static>(pub(super) H);
 
-    impl<H> FastClose<H>
-    where
-        H: Into<OwnedFd> + ?Sized,
-    {
+    // Public interface
+    impl<H: FastCloseable> FastClose<H> {
         /// Creates a new fast-closing file handle
-        ///
-        /// You may find it more convenient to use
-        /// [`FastCloseable::fast_close()`](crate::FastCloseable::fast_close)
         #[inline(always)]
         pub fn new(handle: H) -> Self {
+            handle.fast_close()
+        }
+    }
+
+    impl<H: Send + 'static> FastClose<H> {
+        // Private definition for FastCloseable to use
+        /// Creates a new fast-closing file handle
+        #[inline]
+        pub(super) fn _new(handle: H) -> FastClose<H> {
             FastClose(handle)
         }
     }
 
-    impl<H> Drop for FastClose<H>
-    where
-        H: Into<OwnedFd> + ?Sized,
-    {
+    impl<H: Send + 'static> Drop for FastClose<H> {
         /// Submits the file handle to your chosen backend to handle its closure
         ///
         /// Note: on non-Windows targets, nothing is done, the handle is just
@@ -205,178 +197,132 @@ mod stub {
     }
 }
 
-/// Writes blanket trait implementations for [`FastClose`]
-///
-/// Takes the path of the type the `FastClose`'s inner must convert to, i.e.
-/// `OwnedHandle` on Windows
-macro_rules! blanket_impls {
-    ($handle_type:path) => {
-        impl<H> Deref for FastClose<H>
-        where
-            H: Into<$handle_type>,
-        {
-            type Target = H;
+impl<H: Send + 'static> Deref for FastClose<H> {
+    type Target = H;
 
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
-
-        impl<H> DerefMut for FastClose<H>
-        where
-            H: Into<$handle_type>,
-        {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.0
-            }
-        }
-
-        impl<H> From<H> for FastClose<H>
-        where
-            H: Into<$handle_type>,
-        {
-            fn from(handle: H) -> Self {
-                Self::new(handle)
-            }
-        }
-
-        impl<H> io::Read for FastClose<H>
-        where
-            H: io::Read + Into<$handle_type>,
-        {
-            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-                self.0.read(buf)
-            }
-
-            fn read_vectored(
-                &mut self,
-                bufs: &mut [IoSliceMut<'_>],
-            ) -> io::Result<usize> {
-                self.0.read_vectored(bufs)
-            }
-
-            fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
-                self.0.read_to_end(buf)
-            }
-
-            fn read_to_string(
-                &mut self,
-                buf: &mut String,
-            ) -> io::Result<usize> {
-                self.0.read_to_string(buf)
-            }
-
-            fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
-                self.0.read_exact(buf)
-            }
-
-            fn by_ref(&mut self) -> &mut Self
-            where
-                Self: Sized,
-            {
-                self
-            }
-        }
-
-        impl<H> io::Write for FastClose<H>
-        where
-            H: io::Write + Into<$handle_type>,
-        {
-            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-                self.0.write(buf)
-            }
-
-            fn write_vectored(
-                &mut self,
-                bufs: &[IoSlice<'_>],
-            ) -> io::Result<usize> {
-                self.0.write_vectored(bufs)
-            }
-
-            fn flush(&mut self) -> io::Result<()> {
-                self.0.flush()
-            }
-
-            fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
-                self.0.write_all(buf)
-            }
-
-            fn write_fmt(&mut self, fmt: Arguments<'_>) -> io::Result<()> {
-                self.0.write_fmt(fmt)
-            }
-
-            fn by_ref(&mut self) -> &mut Self
-            where
-                Self: Sized,
-            {
-                self
-            }
-        }
-
-        impl<H> io::Seek for FastClose<H>
-        where
-            H: io::Seek + Into<$handle_type>,
-        {
-            fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-                self.0.seek(pos)
-            }
-
-            fn rewind(&mut self) -> io::Result<()> {
-                self.0.rewind()
-            }
-
-            fn stream_position(&mut self) -> io::Result<u64> {
-                self.0.stream_position()
-            }
-        }
-    };
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-#[cfg(windows)]
-blanket_impls!(std::os::windows::io::OwnedHandle);
-
-// Use OwnedFd as the non-Windows alternative that *should* work in most cases
-// (I would expect it to be very rare for a type to impl Into<OwnedFd> on *nix
-// and then not impl Into<OwnedHandle> on Windows.) If that's an issue, then
-// that's probably time to offload the complexity of conditional compile
-// wizardry onto the crate user, as I can't really make a trait bound for
-// "implements this trait on this other OS" (as far as I know!)
-#[cfg(not(windows))]
-blanket_impls!(std::os::fd::OwnedFd);
-
-/// Generates the convenience [`FastCloseable`] trait
-///
-/// Takes the path of the type the `FastClose`'s inner must convert to, i.e.
-/// `OwnedHandle` on Windows
-macro_rules! fast_closeable {
-    ($handle_type:path) => {
-        /// Provides a convenience method to chain with that wraps a file handle
-        /// with [`FastClose`]
-        pub trait FastCloseable: Sized
-        where
-            $handle_type: From<Self>,
-        {
-            /// Wraps `self` in [`FastClose`]
-            fn fast_close(self) -> FastClose<Self>;
-        }
-
-        impl<H> FastCloseable for H
-        where
-            $handle_type: From<Self>,
-        {
-            #[inline(always)]
-            fn fast_close(self) -> FastClose<Self> {
-                FastClose::new(self)
-            }
-        }
-    };
+impl<H: Send + 'static> DerefMut for FastClose<H> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
-#[cfg(windows)]
-fast_closeable!(std::os::windows::io::OwnedHandle);
+impl<H> From<H> for FastClose<H>
+where
+    H: FastCloseable,
+{
+    fn from(handle: H) -> Self {
+        handle.fast_close()
+    }
+}
 
-#[cfg(not(windows))]
-fast_closeable!(std::os::fd::OwnedFd);
+impl<H> io::Read for FastClose<H>
+where
+    H: io::Read + Send + 'static,
+{
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf)
+    }
+
+    fn read_vectored(
+        &mut self,
+        bufs: &mut [IoSliceMut<'_>],
+    ) -> io::Result<usize> {
+        self.0.read_vectored(bufs)
+    }
+
+    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
+        self.0.read_to_end(buf)
+    }
+
+    fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
+        self.0.read_to_string(buf)
+    }
+
+    fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
+        self.0.read_exact(buf)
+    }
+
+    fn by_ref(&mut self) -> &mut Self
+    where
+        Self: Sized,
+    {
+        self
+    }
+}
+
+impl<H> io::Write for FastClose<H>
+where
+    H: io::Write + Send + 'static,
+{
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+        self.0.write_vectored(bufs)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        self.0.write_all(buf)
+    }
+
+    fn write_fmt(&mut self, fmt: Arguments<'_>) -> io::Result<()> {
+        self.0.write_fmt(fmt)
+    }
+
+    fn by_ref(&mut self) -> &mut Self
+    where
+        Self: Sized,
+    {
+        self
+    }
+}
+
+impl<H> io::Seek for FastClose<H>
+where
+    H: io::Seek + Send + 'static,
+{
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        self.0.seek(pos)
+    }
+
+    fn rewind(&mut self) -> io::Result<()> {
+        self.0.rewind()
+    }
+
+    fn stream_position(&mut self) -> io::Result<u64> {
+        self.0.stream_position()
+    }
+}
+
+// TODO: add Async traits in here for those backends
+
+/// Provides a convenience method to chain with that wraps a file handle
+/// with [`FastClose`]
+pub trait FastCloseable: Send {
+    /// Wraps `self` in [`FastClose`]
+    #[inline(always)]
+
+    fn fast_close(self) -> FastClose<Self>
+    where
+        Self: Sized,
+    {
+        // Use internal constructor, because the public one calls .fast_close()
+        FastClose::_new(self)
+    }
+}
+
+// Add compatible struct implementations
+impl FastCloseable for File {}
 
 #[cfg(test)]
 mod tests {
@@ -419,4 +365,6 @@ mod tests {
             "Debug should show inner type"
         );
     }
+
+    // TODO: add trait implementation tests
 }
