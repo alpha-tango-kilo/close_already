@@ -78,7 +78,7 @@ Testing pure read & pure write performance on my machine (Ryzen 5600, Sabrent Ro
 
 The benchmark involved reading/writing the ~2300 .glif files from within the Roboto Regular UFO
 
-```
+```text
 Reading/std::fs/Roboto-Regular.ufo
                         time:   [78.892 ms 79.394 ms 79.983 ms]
 Reading/close_already blocking/Roboto-Regular.ufo
