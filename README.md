@@ -72,6 +72,34 @@ The best part is how concise the solution is to implement, with the basic core l
 In short, yes, almost concerningly well.
 Proper benchmarks incoming, but using a patched version of [`norad`](https://github.com/linebender/norad) - a library for manipulating Unified Font Objects (a font source format notorious for having hundreds or thousands of small files) - I observed a 67% increase in write performance while `norad` was running single-threaded, or when enabling its `rayon` feature, I still observed a ~10% speed-up, despite a sub-optimal implementation (conflicting threadpools)
 
+### Benchmarks
+
+Testing pure read & pure write performance on my machine (Ryzen 5600, Sabrent Rocket 4 NVMe SSD) against the non-async backends:
+
+The benchmark involved reading/writing the ~2300 .glif files from within the Roboto Regular UFO
+
+```
+Reading/std::fs/Roboto-Regular.ufo
+                        time:   [78.892 ms 79.394 ms 79.983 ms]
+Reading/close_already blocking/Roboto-Regular.ufo
+                        time:   [75.592 ms 75.978 ms 76.393 ms]
+Reading/close_already rayon/Roboto-Regular.ufo
+                        time:   [76.307 ms 76.712 ms 77.146 ms]
+Reading/close_already threadpool/Roboto-Regular.ufo
+                        time:   [75.395 ms 75.723 ms 76.073 ms]
+
+Writing/std::fs/Roboto-Regular.ufo
+                        time:   [1.4257 s 1.4484 s 1.4712 s]
+Writing/close_already blocking/Roboto-Regular.ufo
+                        time:   [1.3094 s 1.3155 s 1.3223 s]
+Writing/close_already rayon/Roboto-Regular.ufo
+                        time:   [1.2031 s 1.2134 s 1.2241 s]
+Writing/close_already threadpool/Roboto-Regular.ufo
+                        time:   [1.2057 s 1.2143 s 1.2241 s]
+```
+
+In summary, you can look to see 3-5% effective increase in reads, and 9-16% effective increase in writes
+
 ## Contributing
 
 There's a [Justfile](https://github.com/casey/just#readme) for ease of running checks & tests across multiple backends.
