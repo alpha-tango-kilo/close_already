@@ -30,9 +30,14 @@ tokio = { version = "1.23.1", features = ["rt", "fs"], optional = true }
 threadpool = { version = "1.7", optional = true }
 
 [dev-dependencies]
+criterion = "0.5"
 tempfile = "3"
 # Have to include this so we can get Async{Read,Write}Ext through feature unification
 tokio = { version = "1.23.1", features = ["io-util"] }
 
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"
+
+[[bench]]
+name = "criterion"
+harness = false

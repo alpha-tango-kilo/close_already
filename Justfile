@@ -5,6 +5,7 @@ alias check := clippy
 alias t := test
 alias fmt := format
 alias d := doc
+alias b := bench
 
 @_default:
     echo "Using this Justfile for clippy/test requires cargo-hack & the"
@@ -17,6 +18,7 @@ alias d := doc
 clippy:
     cargo hack \
       --each-feature \
+      --skip default \
       --exclude-no-default-features \
       --exclude-all-features \
       clippy \
@@ -27,10 +29,22 @@ clippy:
 test:
     cargo hack \
       --each-feature \
+      --skip default \
       --exclude-no-default-features \
       --exclude-all-features \
       test \
       --target x86_64-pc-windows-msvc
+
+bench:
+    # Skip std perf & async runtimes
+    cargo hack \
+        --each-feature \
+        --skip default,backend-async-std,backend-smol,backend-tokio \
+        --exclude-no-default-features \
+        --exclude-all-features \
+        bench \
+        -- \
+        close_already
 
 # Run nightly rustfmt
 format:
