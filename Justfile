@@ -5,7 +5,6 @@ alias check := clippy
 alias t := test
 alias fmt := format
 alias d := doc
-alias b := bench
 
 @_default:
     echo "Using this Justfile for clippy/test requires cargo-hack & the"
@@ -35,6 +34,8 @@ test:
       test \
       --target x86_64-pc-windows-msvc
 
+# Benchmark close_already's non-async backends
+[windows]
 bench:
     # Skip std perf & async runtimes
     cargo hack \
