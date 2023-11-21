@@ -1,4 +1,4 @@
-# `close_already` - speeding up programs handling lots of files on Windows
+# `close_already` - speeding up programs writing lots of files on Windows
 
 [![GitHub Actions](https://github.com/alpha-tango-kilo/close_already/actions/workflows/rust.yml/badge.svg)](https://github.com/alpha-tango-kilo/close_already/actions/workflows/rust.yml)
 [![Crates.io](https://img.shields.io/crates/v/close_already.svg)](https://crates.io/crates/close_already)
@@ -11,7 +11,7 @@ While not using this crate specifically, there are case studies in both [rustup]
 
 ## Should I use it?
 
-If you're reading/writing relatively small files in the order of magnitude of hundreds or greater, you would most likely benefit from `close_already`.
+If you're writing relatively small files in the order of magnitude of hundreds or greater, you would most likely benefit from `close_already`.
 It's designed to be easy to switch to and use, so try it out and benchmark it!
 Note that if your code is already trying to use multiple threads/cores to handle files (e.g. with `rayon`), your performance gains will be far more modest
 
@@ -69,25 +69,10 @@ The best part is how concise the solution is to implement, with the basic core l
 
 ## Does it work?
 
-In short, yes, almost concerningly well.
-Proper benchmarks incoming, but using a patched version of [`norad`](https://github.com/linebender/norad) - a library for manipulating Unified Font Objects (a font source format notorious for having hundreds or thousands of small files) - I observed a 67% increase in write performance while `norad` was running single-threaded, or when enabling its `rayon` feature, I still observed a ~10% speed-up, despite a sub-optimal implementation (conflicting threadpools)
-
-### Benchmarks
-
-Testing pure read & pure write performance on my machine (Ryzen 5600, Sabrent Rocket 4 NVMe SSD) against the non-async backends:
-
-The benchmark involved reading/writing the ~2300 .glif files from within the Roboto Regular UFO
+Below are the pure write performance times on my machine (Ryzen 5600, Sabrent Rocket 4 NVMe SSD) against the non-async backends.
+The benchmark involved writing the ~2300 .glif files from within the Roboto Regular UFO
 
 ```text
-Reading/std::fs/Roboto-Regular.ufo
-                        time:   [78.892 ms 79.394 ms 79.983 ms]
-Reading/close_already blocking/Roboto-Regular.ufo
-                        time:   [75.592 ms 75.978 ms 76.393 ms]
-Reading/close_already rayon/Roboto-Regular.ufo
-                        time:   [76.307 ms 76.712 ms 77.146 ms]
-Reading/close_already threadpool/Roboto-Regular.ufo
-                        time:   [75.395 ms 75.723 ms 76.073 ms]
-
 Writing/std::fs/Roboto-Regular.ufo
                         time:   [1.4257 s 1.4484 s 1.4712 s]
 Writing/close_already blocking/Roboto-Regular.ufo
@@ -98,7 +83,7 @@ Writing/close_already threadpool/Roboto-Regular.ufo
                         time:   [1.2057 s 1.2143 s 1.2241 s]
 ```
 
-In summary, you can look to see 3-5% effective increase in reads, and 9-16% effective increase in writes
+In summary, you can look to see 9-16% effective decrease in write times, though this of course will depend on the workload
 
 ## Contributing
 
