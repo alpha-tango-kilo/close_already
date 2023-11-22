@@ -649,10 +649,7 @@ mod tests {
             !debug.contains("ManuallyDrop"),
             "Debug should hide implementation details"
         );
-        assert!(
-            debug.contains("File"),
-            "Debug (pretty) should show inner type"
-        );
+        assert!(debug.contains("File"), "Debug should show inner type");
 
         let debug_pretty = format!("{file:#?}");
         println!("Pretty debug: {debug_pretty}");
@@ -662,7 +659,7 @@ mod tests {
         );
         assert!(
             debug_pretty.contains("File"),
-            "Debug should show inner type"
+            "Debug (pretty) should show inner type"
         );
 
         #[cfg(feature = "backend-tokio")]
@@ -683,6 +680,8 @@ mod tests {
         feature = "backend-tokio",
     ))]
     mod async_traits {
+        // Import fudging spaghetti to keep the tests clean & without
+        // duplication
         #[cfg(feature = "backend-async-std")]
         use async_std::{
             fs::File, io::prelude::*, io::SeekFrom, task as runtime,
@@ -694,11 +693,13 @@ mod tests {
         #[cfg(feature = "backend-tokio")]
         use tokio_shim::RuntimeShim as runtime;
 
+        // This piece of jank means that I can run a future on a Tokio runtime
+        // as a static function. I either write this hack, or have to re-write
+        // all the async_traits test in the tokio way (tm)
         #[cfg(feature = "backend-tokio")]
         mod tokio_shim {
             pub struct RuntimeShim;
 
-            #[cfg(feature = "backend-tokio")]
             impl RuntimeShim {
                 pub fn block_on<F: std::future::Future>(
                     future: F,
