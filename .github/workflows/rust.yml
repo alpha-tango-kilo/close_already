@@ -24,15 +24,14 @@ jobs:
             --exclude-all-features \
             test
           cargo doc --no-deps --document-private-items
-  msrv:
-    name: Check MSRV (${{ matrix.os }})
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  miri-windows:
+    name: Run Miri tests (Windows)
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.72.1
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       - name: Ensure compilation & passing tests on all backends
@@ -40,11 +39,28 @@ jobs:
         run: |
           cargo hack \
             --each-feature \
+            --skip default,backend-async-std,backend-smol \
             --exclude-no-default-features \
             --exclude-all-features \
-            check
+            miri \
+            test
+  miri-linux:
+    name: Run Miri tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: Ensure compilation & passing tests on all backends
+        shell: bash
+        run: |
           cargo hack \
             --each-feature \
+            --skip default \
             --exclude-no-default-features \
             --exclude-all-features \
+            miri \
             test
