@@ -69,6 +69,8 @@ The best part is how concise the solution is to implement, with the basic core l
 
 ## Does it work?
 
+### Synthetic benchmarks
+
 Below are the pure write performance times on my machine (Ryzen 5600, Sabrent Rocket 4 NVMe SSD) against the non-async backends.
 The benchmark involved writing the ~2300 .glif files from within the Roboto Regular UFO
 
@@ -84,6 +86,41 @@ Writing/close_already threadpool/Roboto-Regular.ufo
 ```
 
 In summary, you can look to see 9-16% effective decrease in write times, though this of course will depend on the workload
+
+### Case study: [`norad`](https://github.com/linebender/norad)
+
+`norad` is a library that supports the Unified Font Object standard, a source file format for fonts notorious for having a very large number of files.
+For example, check out [Roboto Regular](https://github.com/googlefonts/roboto/tree/cb3cde1a3069f28b9a66f3d104f51fd6c0734be1/src/v2/Roboto-Regular.ufo), the example 'decent size' font used in the below benchmark
+
+Comparing single-threaded `norad` (i.e. default features) with and without `close_already`:
+
+```text
+norad (default):
+write Roboto-Regular.ufo
+                        time:   [2.0756 s 2.0973 s 2.1211 s]
+norad (default) + close_already (threadpool):
+write Roboto-Regular.ufo
+                        time:   [975.15 ms 1.0152 s 1.0596 s]
+```
+
+**Twice as fast!**
+
+How about an already-multi-threaded workload? `norad` has opt-in `rayon` support:
+
+```text
+norad (rayon):
+write Roboto-Regular.ufo
+                        time:   [867.16 ms 922.49 ms 985.35 ms]
+norad (rayon) + close_already (rayon):
+write Roboto-Regular.ufo
+                        time:   [831.17 ms 871.48 ms 915.87 ms]
+```
+
+Still over 10% faster, despite the 2x speed-up `norad` already gained from using `rayon`!
+
+You can run the numbers yourself on [my fork](https://github.com/alpha-tango-kilo/norad) using `cargo bench` and the `before`/`after` tags
+
+`close_already` is being used in `norad` as of v0.14 for all workloads
 
 ## Contributing
 
