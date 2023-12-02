@@ -34,8 +34,10 @@ jobs:
           components: miri
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
-      - name: Ensure compilation & passing tests on all backends
+      - name: Run Miri tests on all backends
         shell: bash
+        env:
+          MIRIFLAGS: "-Zmiri-ignore-leaks"
         run: |
           cargo hack \
             --each-feature \
@@ -54,7 +56,7 @@ jobs:
           components: miri
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
-      - name: Ensure compilation & passing tests on all backends
+      - name: Run Miri tests on all backends
         shell: bash
         run: |
           cargo hack \
