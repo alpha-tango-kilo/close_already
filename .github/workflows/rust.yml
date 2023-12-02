@@ -23,6 +23,9 @@ jobs:
             --exclude-no-default-features \
             --exclude-all-features \
             test
+      - name: Test documentation (including private)
+        shell: bash
+        run: |
           cargo doc --no-deps --document-private-items
   miri-windows:
     name: Run Miri tests (Windows)
