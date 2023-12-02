@@ -660,7 +660,7 @@ mod tokio_impls {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use std::{fs::File, mem::size_of};
 
@@ -777,5 +777,33 @@ mod tests {
                     .expect("write should succeed");
             });
         }
+    }
+}
+
+#[cfg(all(test, miri))]
+mod miri_tests {
+    use crate::{FastClose, FastCloseable};
+
+    struct Foo;
+    impl FastCloseable for Foo {}
+
+    #[test]
+    fn into_inner() {
+        let fast_close = FastClose::new(Foo);
+        let _ = fast_close.into_inner();
+    }
+
+    #[test]
+    #[cfg(not(feature = "backend-tokio"))]
+    fn drop() {
+        let fast_close = FastClose::new(Foo);
+        std::mem::drop(fast_close);
+    }
+
+    #[cfg(feature = "backend-tokio")]
+    #[cfg_attr(feature = "backend-tokio", tokio::test)]
+    async fn drop() {
+        let fast_close = FastClose::new(Foo);
+        std::mem::drop(fast_close);
     }
 }

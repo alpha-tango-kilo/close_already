@@ -6,6 +6,8 @@ alias t := test
 alias fmt := format
 alias d := doc
 
+export MIRIFLAGS := "-Zmiri-ignore-leaks"
+
 @_default:
     echo "Using this Justfile for clippy/test requires cargo-hack & the"
     echo "x86_64-pc-windows-msvc target installed"
@@ -33,6 +35,27 @@ test:
       --exclude-all-features \
       test \
       --target x86_64-pc-windows-msvc
+
+# Run miri against all backends on Windows & Linux
+miri:
+    @echo "Running miri against x86_64-pc-windows-msvc"
+    cargo +nightly hack \
+          --each-feature \
+          --skip default,backend-async-std,backend-smol \
+          --exclude-no-default-features \
+          --exclude-all-features \
+          miri \
+          test \
+          --target x86_64-pc-windows-msvc
+    @echo "Running miri against x86_64-unknown-linux-gnu"
+    cargo +nightly hack \
+          --each-feature \
+          --skip default \
+          --exclude-no-default-features \
+          --exclude-all-features \
+          miri \
+          test \
+          --target x86_64-unknown-linux-gnu
 
 # Benchmark close_already's non-async backends
 [windows]
