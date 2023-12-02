@@ -44,9 +44,24 @@ mod windows {
     static CLOSER_POOL: OnceLock<ThreadPool> = OnceLock::new();
 
     /// A zero-sized wrapper that moves a file handle to a thread pool on drop
+    #[repr(transparent)]
     pub struct FastClose<H: Send + 'static>(pub(super) ManuallyDrop<H>);
 
     impl<H: Send + 'static> FastClose<H> {
+        /// Gets back the inner file type
+        ///
+        /// This means that `close_already` will no longer send the handle to a
+        /// backend on drop
+        pub fn into_inner(self) -> H {
+            // Prevent destructor being called first, in case we get interrupted
+            // somehow before the end of the method
+            let mut wrapped = ManuallyDrop::new(self);
+            // SAFETY: we are never going to access self.0 again because this
+            // method takes ownership of self and we've already prevented its
+            // destructor from being called
+            unsafe { ManuallyDrop::take(&mut wrapped.0) }
+        }
+
         // Private definition for FastCloseable to use
         /// Creates a new fast-closing file handle
         #[inline]
@@ -178,11 +193,32 @@ mod windows {
 /// The non-Windows stub implementation of [`FastClose`]
 #[cfg(not(windows))]
 mod stub {
+    use std::{mem::ManuallyDrop, ptr};
+
     /// A zero-sized wrapper that moves a file handle to a thread pool on drop
+    #[repr(transparent)]
     #[derive(Debug)]
     pub struct FastClose<H: Send + 'static>(pub(super) H);
 
     impl<H: Send + 'static> FastClose<H> {
+        // https://discord.com/channels/442252698964721669/443150878111694848/1180556717243764829
+        /// Gets back the inner file type
+        ///
+        /// This means that `close_already` will no longer send the handle to a
+        /// backend on drop
+        // Note: ideally we'd transmute here, but the compiler as of 1.74
+        // currently won't transmute "dependently-sized types", which
+        // FastClose is (being generic over H)
+        pub fn into_inner(self) -> H {
+            // Prevent destructor being called first, in case we get interrupted
+            // somehow before the end of the method
+            let wrapped = ManuallyDrop::new(self);
+            let h_ptr: *const H = &wrapped.0;
+            // SAFETY: we know h_ptr points to H still because the it was
+            // wrapped in ManuallyDrop, preventing its destructor being run
+            unsafe { ptr::read(h_ptr) }
+        }
+
         // Private definition for FastCloseable to use
         /// Creates a new fast-closing file handle
         #[inline]
