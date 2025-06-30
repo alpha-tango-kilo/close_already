@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
+## v0.3.4 - 2025/06/30
+
+* Only pull in backend dependencies on Windows (should improve compile times on non-Windows platforms)
+* Derive more traits on `FastClose` to make it more convenient to use
+
 ## v0.3.3 - 2024/02/12
 
 * Update dependencies
