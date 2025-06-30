@@ -5,6 +5,7 @@
 #![doc = include_str!("../README.md")]
 
 use std::{
+    cmp::Ordering,
     fmt::Arguments,
     io,
     io::{IoSlice, IoSliceMut, SeekFrom},
@@ -45,6 +46,7 @@ mod windows {
 
     /// A zero-sized wrapper that moves a file handle to a thread pool on drop
     #[repr(transparent)]
+    #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
     pub struct FastClose<H: Send + 'static>(pub(super) ManuallyDrop<H>);
 
     impl<H: Send + 'static> FastClose<H> {
@@ -197,7 +199,7 @@ mod stub {
 
     /// A zero-sized wrapper that moves a file handle to a thread pool on drop
     #[repr(transparent)]
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
     pub struct FastClose<H: Send + 'static>(pub(super) H);
 
     impl<H: Send + 'static> FastClose<H> {
@@ -282,6 +284,24 @@ where
 {
     fn from(handle: H) -> Self {
         handle.fast_close()
+    }
+}
+
+impl<H> PartialEq<H> for FastClose<H>
+where
+    H: PartialEq + Send + 'static,
+{
+    fn eq(&self, other: &H) -> bool {
+        self.deref() == other
+    }
+}
+
+impl<H> PartialOrd<H> for FastClose<H>
+where
+    H: PartialOrd + Send + 'static,
+{
+    fn partial_cmp(&self, other: &H) -> Option<Ordering> {
+        self.deref().partial_cmp(other)
     }
 }
 
