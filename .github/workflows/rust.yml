@@ -4,6 +4,9 @@ on:
 
 name: Build & test
 
+env:
+  RUSTFLAGS: "-Dwarnings"
+
 jobs:
   test:
     name: Test (${{ matrix.os }})

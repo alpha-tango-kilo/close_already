@@ -3,6 +3,9 @@ on:
 
 name: Lint
 
+env:
+  RUSTFLAGS: "-Dwarnings"
+
 jobs:
   format:
     name: Formatting
