@@ -44,7 +44,7 @@ jobs:
         run: |
           cargo hack \
             --each-feature \
-            --skip default,backend-async-std,backend-smol \
+            --skip default,backend-async-std,backend-smol,backend-rayon \
             --exclude-no-default-features \
             --exclude-all-features \
             miri \

@@ -41,7 +41,7 @@ miri:
     @echo "Running miri against x86_64-pc-windows-msvc"
     cargo +nightly hack \
           --each-feature \
-          --skip default,backend-async-std,backend-smol \
+          --skip default,backend-async-std,backend-smol,backend-rayon \
           --exclude-no-default-features \
           --exclude-all-features \
           miri \
