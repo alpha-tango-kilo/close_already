@@ -44,3 +44,13 @@ default-target = "x86_64-pc-windows-msvc"
 [[bench]]
 name = "criterion"
 harness = false
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_ocs = "warn"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"

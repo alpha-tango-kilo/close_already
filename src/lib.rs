@@ -1,7 +1,3 @@
-#![deny(clippy::undocumented_unsafe_blocks)]
-#![deny(rustdoc::broken_intra_doc_links)]
-#![deny(unsafe_op_in_unsafe_fn)]
-#![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
 use std::{
