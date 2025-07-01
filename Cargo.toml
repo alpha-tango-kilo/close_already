@@ -20,14 +20,15 @@ backend-tokio = ["dep:tokio"]
 
 [dependencies]
 mutually_exclusive_features = "0.1"
-
-# Backends, only needed on Windows
-[target.'cfg(windows)'.dependencies]
+# Some backends are needed on non-Windows, others are to be able to forward
+# traits
 async-std = { version = "1", optional = true }
-blocking = { version = "1.2", optional = true }
-rayon = { version = "1", optional = true }
 smol = { version = "2", optional = true }
 tokio = { version = "1.23.1", features = ["rt", "fs"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+blocking = { version = "1.2", optional = true }
+rayon = { version = "1", optional = true }
 threadpool = { version = "1.7", optional = true }
 
 [dev-dependencies]
