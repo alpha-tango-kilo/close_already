@@ -47,7 +47,7 @@ harness = false
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
-missing_ocs = "warn"
+missing_docs = "warn"
 
 [lints.clippy]
 undocumented_unsafe_blocks = "deny"
